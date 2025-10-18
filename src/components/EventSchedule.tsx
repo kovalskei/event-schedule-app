@@ -59,8 +59,8 @@ const mockSessions: Session[] = [
   {
     id: '3',
     hall: 'Зал А',
-    startTime: '10:00',
-    endTime: '11:00',
+    startTime: '10:45',
+    endTime: '11:20',
     speaker: 'Елена Королёва',
     role: 'Head of Marketing',
     title: 'Тренды маркетинга 2025',
@@ -107,8 +107,8 @@ const mockSessions: Session[] = [
   {
     id: '6',
     hall: 'Зал B',
-    startTime: '11:30',
-    endTime: '12:30',
+    startTime: '11:15',
+    endTime: '11:55',
     speaker: 'Сергей Иванов',
     role: 'Эксперт по ESG',
     title: 'Устойчивое развитие бизнеса',
@@ -171,8 +171,8 @@ const mockSessions: Session[] = [
   {
     id: '10',
     hall: 'Зал D',
-    startTime: '10:00',
-    endTime: '11:00',
+    startTime: '10:45',
+    endTime: '11:35',
     speaker: 'Мария Лебедева',
     role: 'Product Manager',
     title: 'Создание продуктов, которые любят пользователи',
@@ -183,29 +183,16 @@ const mockSessions: Session[] = [
       'Метрики успеха продукта'
     ],
     tags: ['Продукт', 'UX']
-  },
-  {
-    id: '11',
-    hall: 'Зал B',
-    startTime: '10:15',
-    endTime: '10:45',
-    speaker: 'Игорь Семёнов',
-    role: 'Tech Lead',
-    title: 'Микросервисная архитектура на практике',
-    description: 'Реальный опыт перехода от монолита к микросервисам.',
-    bulletPoints: [
-      'Когда нужны микросервисы',
-      'Паттерны проектирования',
-      'Мониторинг и отладка'
-    ],
-    tags: ['Технологии', 'Архитектура']
   }
 ];
 
+const timeToMinutes = (time: string): number => {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
 const getDuration = (start: string, end: string): number => {
-  const [startH, startM] = start.split(':').map(Number);
-  const [endH, endM] = end.split(':').map(Number);
-  return (endH * 60 + endM) - (startH * 60 + startM);
+  return timeToMinutes(end) - timeToMinutes(start);
 };
 
 const EventSchedule = () => {
@@ -250,10 +237,13 @@ const EventSchedule = () => {
 
   const hasConflict = (session: Session) => {
     const planSessions = mockSessions.filter(s => myPlan.includes(s.id) && s.id !== session.id);
-    return planSessions.some(s => 
-      s.startTime === session.startTime || 
-      (s.startTime < session.startTime && s.endTime > session.startTime)
-    );
+    return planSessions.some(s => {
+      const sStart = timeToMinutes(s.startTime);
+      const sEnd = timeToMinutes(s.endTime);
+      const sessionStart = timeToMinutes(session.startTime);
+      const sessionEnd = timeToMinutes(session.endTime);
+      return (sessionStart < sEnd && sessionEnd > sStart);
+    });
   };
 
   const currentTime = '11:00';
@@ -267,26 +257,36 @@ const EventSchedule = () => {
     alert('Экспорт личного плана в PDF (в разработке)');
   };
 
-  const allHalls = Array.from(new Set(filteredSessions.map(s => s.hall)));
-  const allTimes = Array.from(new Set(filteredSessions.map(s => s.startTime))).sort();
-
-  const getSessionsAtTime = (time: string) => {
-    return allHalls.map(hall => {
-      return filteredSessions.find(s => s.hall === hall && s.startTime === time) || null;
-    });
+  const allHalls = Array.from(new Set(filteredSessions.map(s => s.hall))).sort();
+  
+  const earliestTime = Math.min(...filteredSessions.map(s => timeToMinutes(s.startTime)));
+  const latestTime = Math.max(...filteredSessions.map(s => timeToMinutes(s.endTime)));
+  
+  const generateTimeLabels = () => {
+    const labels: string[] = [];
+    const startHour = Math.floor(earliestTime / 60);
+    const endHour = Math.ceil(latestTime / 60);
+    
+    for (let hour = startHour; hour <= endHour; hour++) {
+      labels.push(`${hour.toString().padStart(2, '0')}:00`);
+    }
+    return labels;
   };
+
+  const timeLabels = generateTimeLabels();
+  const PIXELS_PER_MINUTE = 2;
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-6 md:py-8 max-w-[1600px]">
+      <div className="container mx-auto px-4 py-6 md:py-8 max-w-[1800px]">
         {/* Header */}
         <div className="mb-6 md:mb-8 animate-fade-in">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-4xl md:text-6xl font-serif font-bold text-foreground mb-2 md:mb-3">
+              <h1 className="text-3xl md:text-5xl font-bold text-foreground mb-2">
                 Премиум Форум 2025
               </h1>
-              <p className="text-muted-foreground text-base md:text-xl">
+              <p className="text-muted-foreground text-sm md:text-base">
                 17 октября 2025 • Москва, Центр «Метрополь»
               </p>
             </div>
@@ -294,19 +294,18 @@ const EventSchedule = () => {
               <Button
                 variant="outline"
                 onClick={exportProgramToPDF}
-                className="h-11 text-sm md:text-base"
+                className="h-10 text-sm"
               >
-                <Icon name="FileDown" size={18} className="mr-2" />
-                <span className="hidden sm:inline">Программа PDF</span>
-                <span className="sm:hidden">PDF</span>
+                <Icon name="FileDown" size={16} className="mr-2" />
+                Программа PDF
               </Button>
               <Button
                 variant="outline"
                 size="icon"
                 onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
-                className="rounded-full h-11 w-11"
+                className="rounded-full h-10 w-10"
               >
-                <Icon name={theme === 'light' ? 'Moon' : 'Sun'} size={20} />
+                <Icon name={theme === 'light' ? 'Moon' : 'Sun'} size={18} />
               </Button>
             </div>
           </div>
@@ -317,15 +316,15 @@ const EventSchedule = () => {
         <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} className="mb-6 md:mb-8 animate-fade-in" style={{ animationDelay: '0.1s' }}>
           <div className="flex items-center justify-between">
             <CollapsibleTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Icon name="Filter" size={18} />
+              <Button variant="outline" className="gap-2 h-10 text-sm">
+                <Icon name="Filter" size={16} />
                 Фильтры
                 {selectedTags.length > 0 && (
                   <Badge variant="default" className="ml-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
                     {selectedTags.length}
                   </Badge>
                 )}
-                <Icon name={filtersOpen ? 'ChevronUp' : 'ChevronDown'} size={16} />
+                <Icon name={filtersOpen ? 'ChevronUp' : 'ChevronDown'} size={14} />
               </Button>
             </CollapsibleTrigger>
             {selectedTags.length > 0 && (
@@ -333,14 +332,14 @@ const EventSchedule = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedTags([])}
-                className="text-sm"
+                className="text-sm h-10"
               >
                 Сбросить
               </Button>
             )}
           </div>
           <CollapsibleContent className="mt-4">
-            <div className="flex items-center gap-2 flex-wrap p-4 bg-muted/50 rounded-lg border">
+            <div className="flex items-center gap-2 flex-wrap p-4 bg-muted/30 rounded-lg border">
               {allTags.map(tag => (
                 <Badge
                   key={tag}
@@ -362,120 +361,129 @@ const EventSchedule = () => {
           {/* Main Schedule */}
           <div className="xl:col-span-3">
             <Tabs defaultValue="grid" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6 md:mb-8 h-11 md:h-12">
-                <TabsTrigger value="grid" className="flex items-center gap-2 text-sm md:text-base">
-                  <Icon name="LayoutGrid" size={18} />
+              <TabsList className="grid w-full grid-cols-2 mb-6 md:mb-8 h-11">
+                <TabsTrigger value="grid" className="flex items-center gap-2 text-sm">
+                  <Icon name="LayoutGrid" size={16} />
                   Программа
                 </TabsTrigger>
-                <TabsTrigger value="now" className="flex items-center gap-2 text-sm md:text-base">
-                  <Icon name="Clock" size={18} />
+                <TabsTrigger value="now" className="flex items-center gap-2 text-sm">
+                  <Icon name="Clock" size={16} />
                   Сейчас
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="grid" className="mt-0">
-                {/* Desktop Grid View */}
-                <Card className="hidden md:block p-6 lg:p-8 bg-card border-2">
-                  <div className="relative">
-                    {/* Sticky Hall Headers */}
-                    <div className="sticky top-0 bg-card z-20 pb-4 mb-6 border-b-2">
-                      <div className={`grid gap-4`} style={{ gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))` }}>
-                        {allHalls.map(hall => (
-                          <div key={hall} className="px-4 py-3 bg-primary/10 rounded-lg border-2 border-primary/20">
-                            <h4 className="font-bold text-base lg:text-lg text-center text-foreground">
-                              {hall}
-                            </h4>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
+                {/* Desktop Timeline View */}
+                <div className="hidden md:block">
+                  <Card className="p-6 bg-card border">
                     <ScrollArea className="h-[700px]">
-                      <div className="space-y-10">
-                        {allTimes.map((time, timeIdx) => {
-                          const sessionsAtTime = getSessionsAtTime(time);
-                          return (
-                            <div key={time} className="animate-fade-in" style={{ animationDelay: `${timeIdx * 0.1}s` }}>
-                              <div className="mb-6">
-                                <h3 className="text-xl lg:text-2xl font-bold text-primary flex items-center gap-3">
-                                  <Icon name="Clock" size={24} />
+                      <div className="flex gap-4">
+                        {/* Time Column */}
+                        <div className="w-20 flex-shrink-0 pt-12">
+                          <div className="relative" style={{ height: `${(latestTime - earliestTime) * PIXELS_PER_MINUTE}px` }}>
+                            {timeLabels.map((time) => {
+                              const offset = (timeToMinutes(time) - earliestTime) * PIXELS_PER_MINUTE;
+                              return (
+                                <div
+                                  key={time}
+                                  className="absolute right-2 text-sm font-medium text-muted-foreground"
+                                  style={{ top: `${offset}px`, transform: 'translateY(-50%)' }}
+                                >
                                   {time}
-                                </h3>
-                              </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
 
-                              {/* Sessions Grid */}
-                              <div className={`grid gap-4`} style={{ gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))` }}>
-                                {sessionsAtTime.map((session, idx) => (
-                                  <div key={idx}>
-                                    {session ? (
-                                      <Card
-                                        className={cn(
-                                          'p-5 cursor-pointer transition-all hover:shadow-xl hover:-translate-y-1 border-2',
-                                          'bg-card',
-                                          myPlan.includes(session.id) && 'ring-2 ring-primary border-primary'
-                                        )}
-                                        onClick={() => setSelectedSession(session)}
-                                      >
-                                        <div className="flex justify-between items-start mb-3">
-                                          <Badge variant="outline" className="text-xs">
-                                            {session.startTime} - {session.endTime}
-                                          </Badge>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-7 w-7 -mt-1 -mr-1"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              toggleMyPlan(session.id);
-                                            }}
-                                          >
-                                            <Icon
-                                              name={myPlan.includes(session.id) ? 'BookmarkCheck' : 'BookmarkPlus'}
-                                              size={16}
-                                              className={myPlan.includes(session.id) ? 'text-primary' : ''}
-                                            />
-                                          </Button>
-                                        </div>
-                                        <h4 className="font-bold text-base mb-3 leading-snug">
-                                          {session.title}
-                                        </h4>
-                                        <p className="text-sm font-medium text-foreground mb-1">
-                                          {session.speaker}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground mb-3">
-                                          {session.role}
-                                        </p>
-                                        
-                                        {session.bulletPoints && session.bulletPoints.length > 0 && (
-                                          <div className="mb-3 space-y-1">
-                                            {session.bulletPoints.slice(0, 2).map((point, idx) => (
-                                              <div key={idx} className="flex items-start gap-2">
-                                                <span className="text-primary text-xs mt-0.5">•</span>
-                                                <p className="text-xs text-muted-foreground leading-relaxed">
-                                                  {point}
-                                                </p>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </Card>
-                                    ) : (
-                                      <Card className="p-5 border-2 border-dashed border-muted bg-muted/30">
-                                        <p className="text-sm text-muted-foreground text-center py-8">
-                                          —
-                                        </p>
-                                      </Card>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
+                        {/* Halls Grid */}
+                        <div className="flex-1">
+                          {/* Sticky Hall Headers */}
+                          <div className="sticky top-0 bg-card z-10 pb-4 mb-4 border-b">
+                            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))` }}>
+                              {allHalls.map(hall => (
+                                <div key={hall} className="text-center">
+                                  <h4 className="font-bold text-base uppercase tracking-wide text-foreground">
+                                    {hall}
+                                  </h4>
+                                </div>
+                              ))}
                             </div>
-                          );
-                        })}
+                          </div>
+
+                          {/* Sessions Timeline */}
+                          <div className="relative grid gap-3" style={{ 
+                            gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))`,
+                            height: `${(latestTime - earliestTime) * PIXELS_PER_MINUTE}px`
+                          }}>
+                            {allHalls.map((hall) => (
+                              <div key={hall} className="relative border-l border-muted">
+                                {filteredSessions
+                                  .filter(s => s.hall === hall)
+                                  .map(session => {
+                                    const startOffset = (timeToMinutes(session.startTime) - earliestTime) * PIXELS_PER_MINUTE;
+                                    const duration = getDuration(session.startTime, session.endTime);
+                                    const height = duration * PIXELS_PER_MINUTE;
+                                    
+                                    return (
+                                      <div
+                                        key={session.id}
+                                        className="absolute left-0 right-0 px-2"
+                                        style={{ 
+                                          top: `${startOffset}px`,
+                                          height: `${height}px`
+                                        }}
+                                      >
+                                        <Card
+                                          className={cn(
+                                            'h-full p-3 cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02] border overflow-hidden',
+                                            myPlan.includes(session.id) ? 'bg-primary/5 border-primary' : 'bg-card'
+                                          )}
+                                          onClick={() => setSelectedSession(session)}
+                                        >
+                                          <div className="flex flex-col h-full">
+                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                              <Badge variant="secondary" className="text-xs px-2 py-0 flex-shrink-0">
+                                                {session.startTime}
+                                              </Badge>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 flex-shrink-0 -mt-1 -mr-1"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  toggleMyPlan(session.id);
+                                                }}
+                                              >
+                                                <Icon
+                                                  name={myPlan.includes(session.id) ? 'BookmarkCheck' : 'BookmarkPlus'}
+                                                  size={14}
+                                                  className={myPlan.includes(session.id) ? 'text-primary' : ''}
+                                                />
+                                              </Button>
+                                            </div>
+                                            <h4 className="font-bold text-sm leading-tight mb-2 line-clamp-2">
+                                              {session.title}
+                                            </h4>
+                                            <p className="text-xs font-medium text-foreground mb-0.5">
+                                              {session.speaker}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground line-clamp-1">
+                                              {session.role}
+                                            </p>
+                                          </div>
+                                        </Card>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </ScrollArea>
-                  </div>
-                </Card>
+                  </Card>
+                </div>
 
                 {/* Mobile Card View */}
                 <div className="md:hidden space-y-4">
@@ -483,11 +491,11 @@ const EventSchedule = () => {
                   <div className="sticky top-0 bg-background z-10 pb-4 -mx-4 px-4">
                     <ScrollArea className="w-full">
                       <div className="flex gap-2 pb-2">
-                        {allTimes.map(time => (
+                        {Array.from(new Set(filteredSessions.map(s => s.startTime))).sort().map(time => (
                           <a
                             key={time}
                             href={`#time-${time}`}
-                            className="flex-shrink-0 px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg border-2 border-primary/20 transition-colors"
+                            className="flex-shrink-0 px-4 py-2 bg-muted hover:bg-muted/80 rounded-lg border transition-colors"
                           >
                             <span className="font-semibold text-sm text-foreground whitespace-nowrap">
                               {time}
@@ -499,12 +507,12 @@ const EventSchedule = () => {
                   </div>
 
                   {/* Sessions by Time */}
-                  {allTimes.map(time => {
+                  {Array.from(new Set(filteredSessions.map(s => s.startTime))).sort().map(time => {
                     const sessions = filteredSessions.filter(s => s.startTime === time);
                     return (
                       <div key={time} id={`time-${time}`} className="scroll-mt-20">
-                        <h3 className="text-lg font-bold text-primary mb-3 flex items-center gap-2">
-                          <Icon name="Clock" size={20} />
+                        <h3 className="text-base font-bold text-foreground mb-3 flex items-center gap-2">
+                          <Icon name="Clock" size={18} />
                           {time}
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -514,13 +522,13 @@ const EventSchedule = () => {
                               <Card
                                 key={session.id}
                                 className={cn(
-                                  'p-4 cursor-pointer transition-all active:scale-95 border-2',
-                                  myPlan.includes(session.id) && 'ring-2 ring-primary border-primary'
+                                  'p-4 cursor-pointer transition-all active:scale-95 border',
+                                  myPlan.includes(session.id) && 'ring-2 ring-primary border-primary bg-primary/5'
                                 )}
                                 onClick={() => setSelectedSession(session)}
                               >
                                 <div className="flex justify-between items-start mb-2">
-                                  <h4 className="font-bold text-base leading-snug flex-1 pr-2">
+                                  <h4 className="font-bold text-sm leading-snug flex-1 pr-2">
                                     {session.title}
                                   </h4>
                                   <Button
@@ -534,12 +542,12 @@ const EventSchedule = () => {
                                   >
                                     <Icon
                                       name={myPlan.includes(session.id) ? 'BookmarkCheck' : 'BookmarkPlus'}
-                                      size={16}
+                                      size={14}
                                       className={myPlan.includes(session.id) ? 'text-primary' : ''}
                                     />
                                   </Button>
                                 </div>
-                                <p className="text-sm text-muted-foreground mb-3">
+                                <p className="text-xs text-muted-foreground mb-3">
                                   {session.startTime}, {duration} мин
                                 </p>
                                 <Badge variant="outline" className="text-xs">
@@ -556,37 +564,37 @@ const EventSchedule = () => {
               </TabsContent>
 
               <TabsContent value="now" className="mt-0">
-                <div className="space-y-4 md:space-y-5">
+                <div className="space-y-4">
                   {nowSessions.length > 0 ? (
                     nowSessions.map((session, idx) => (
                       <Card
                         key={session.id}
-                        className="p-6 md:p-8 cursor-pointer hover:shadow-xl transition-all bg-gradient-to-r from-primary/10 to-accent/10 border-2 border-primary/30 animate-fade-in"
+                        className="p-6 md:p-8 cursor-pointer hover:shadow-lg transition-all bg-primary/5 border-primary/30 animate-fade-in"
                         style={{ animationDelay: `${idx * 0.1}s` }}
                         onClick={() => setSelectedSession(session)}
                       >
                         <div className="flex flex-col md:flex-row items-start gap-4 md:gap-6">
                           <div className="flex-shrink-0">
-                            <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-primary/20 flex items-center justify-center">
-                              <Icon name="Radio" size={28} className="text-primary animate-pulse" />
+                            <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-primary/20 flex items-center justify-center">
+                              <Icon name="Radio" size={24} className="text-primary animate-pulse" />
                             </div>
                           </div>
                           <div className="flex-1">
-                            <Badge className="mb-3 text-sm">Идёт сейчас</Badge>
-                            <h3 className="font-serif text-2xl md:text-3xl font-bold mb-3">{session.title}</h3>
-                            <p className="text-base text-foreground font-medium mb-1">
+                            <Badge className="mb-3 text-xs">Идёт сейчас</Badge>
+                            <h3 className="text-xl md:text-2xl font-bold mb-2">{session.title}</h3>
+                            <p className="text-sm font-medium text-foreground mb-1">
                               {session.speaker}
                             </p>
-                            <p className="text-base text-muted-foreground mb-2">
+                            <p className="text-sm text-muted-foreground mb-2">
                               {session.role}
                             </p>
-                            <p className="text-sm md:text-base text-muted-foreground mb-4">
+                            <p className="text-sm text-muted-foreground mb-4">
                               {session.hall} • {session.startTime} - {session.endTime}
                             </p>
-                            <p className="text-sm md:text-base mb-4 leading-relaxed">{session.description}</p>
+                            <p className="text-sm mb-4 leading-relaxed">{session.description}</p>
                             <div className="flex gap-2 flex-wrap">
                               {session.tags.map(tag => (
-                                <Badge key={tag} variant="secondary" className="text-sm">{tag}</Badge>
+                                <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
                               ))}
                             </div>
                           </div>
@@ -594,10 +602,10 @@ const EventSchedule = () => {
                       </Card>
                     ))
                   ) : (
-                    <Card className="p-12 md:p-16 text-center border-2 border-dashed">
-                      <Icon name="Coffee" size={48} className="mx-auto mb-4 md:mb-6 text-muted-foreground" />
-                      <h3 className="text-xl md:text-2xl font-bold mb-2 md:mb-3">Перерыв</h3>
-                      <p className="text-muted-foreground text-base md:text-lg">Сейчас идёт перерыв. Следующая сессия начнётся в 14:00</p>
+                    <Card className="p-12 md:p-16 text-center border-dashed">
+                      <Icon name="Coffee" size={48} className="mx-auto mb-4 text-muted-foreground" />
+                      <h3 className="text-xl font-bold mb-2">Перерыв</h3>
+                      <p className="text-muted-foreground text-sm">Сейчас идёт перерыв. Следующая сессия начнётся в 14:00</p>
                     </Card>
                   )}
                 </div>
@@ -607,22 +615,22 @@ const EventSchedule = () => {
 
           {/* My Plan Sidebar */}
           <div className="xl:col-span-1">
-            <Card className="p-5 md:p-6 sticky top-8 bg-card border-2 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-              <h2 className="text-2xl md:text-3xl font-serif font-bold mb-4 md:mb-5 flex items-center gap-2 md:gap-3">
-                <Icon name="Calendar" size={24} className="md:w-7 md:h-7" />
+            <Card className="p-5 md:p-6 sticky top-8 bg-card border animate-fade-in" style={{ animationDelay: '0.2s' }}>
+              <h2 className="text-xl md:text-2xl font-bold mb-4 flex items-center gap-2">
+                <Icon name="Calendar" size={22} />
                 Мой план
               </h2>
-              <Separator className="mb-4 md:mb-5" />
+              <Separator className="mb-4" />
               <ScrollArea className="h-[400px] md:h-[550px]">
                 {myPlan.length === 0 ? (
                   <div className="text-center py-12 md:py-16">
-                    <Icon name="CalendarX" size={48} className="mx-auto mb-4 md:mb-5 text-muted-foreground" />
-                    <p className="text-muted-foreground text-sm md:text-base leading-relaxed px-4">
-                      Выберите доклады, которые хотите посетить
+                    <Icon name="CalendarX" size={48} className="mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground text-sm leading-relaxed px-4">
+                      Добавляйте доклады из расписания
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-3 md:space-y-4">
+                  <div className="space-y-3">
                     {myPlan.map((sessionId, idx) => {
                       const session = mockSessions.find(s => s.id === sessionId);
                       if (!session) return null;
@@ -631,40 +639,37 @@ const EventSchedule = () => {
                         <Card
                           key={sessionId}
                           className={cn(
-                            'p-4 cursor-pointer transition-all hover:shadow-lg animate-scale-in border-2',
+                            'p-3 cursor-pointer transition-all hover:shadow-md animate-scale-in border',
                             conflict && 'border-destructive bg-destructive/5'
                           )}
                           style={{ animationDelay: `${idx * 0.05}s` }}
                           onClick={() => setSelectedSession(session)}
                         >
                           {conflict && (
-                            <div className="flex items-center gap-2 text-xs md:text-sm text-destructive mb-2 font-medium">
-                              <Icon name="AlertCircle" size={14} />
-                              Конфликт по времени
+                            <div className="flex items-center gap-1 text-xs text-destructive mb-2 font-medium">
+                              <Icon name="AlertCircle" size={12} />
+                              Конфликт
                             </div>
                           )}
                           <div className="flex justify-between items-start mb-2">
-                            <Badge variant="outline" className="text-xs">
-                              {session.startTime} - {session.endTime}
+                            <Badge variant="secondary" className="text-xs">
+                              {session.startTime}
                             </Badge>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-7 w-7"
+                              className="h-6 w-6"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 toggleMyPlan(session.id);
                               }}
                             >
-                              <Icon name="X" size={14} />
+                              <Icon name="X" size={12} />
                             </Button>
                           </div>
-                          <h4 className="font-bold text-sm mb-2 leading-snug">
+                          <h4 className="font-bold text-xs mb-1 leading-snug line-clamp-2">
                             {session.title}
                           </h4>
-                          <p className="text-xs text-muted-foreground mb-1">
-                            {session.speaker}
-                          </p>
                           <p className="text-xs text-muted-foreground">
                             {session.hall}
                           </p>
@@ -676,14 +681,14 @@ const EventSchedule = () => {
               </ScrollArea>
               {myPlan.length > 0 && (
                 <>
-                  <Separator className="my-4 md:my-5" />
+                  <Separator className="my-4" />
                   <Button 
-                    className="w-full h-11 text-sm md:text-base" 
+                    className="w-full h-10 text-sm" 
                     variant="default"
                     onClick={exportMyPlanToPDF}
                   >
-                    <Icon name="FileDown" size={18} className="mr-2" />
-                    Мой план PDF
+                    <Icon name="FileDown" size={16} className="mr-2" />
+                    Экспорт PDF
                   </Button>
                 </>
               )}
@@ -698,30 +703,30 @@ const EventSchedule = () => {
           {selectedSession && (
             <div className="animate-fade-in">
               <SheetHeader>
-                <SheetTitle className="text-2xl md:text-3xl font-serif pr-8">{selectedSession.title}</SheetTitle>
+                <SheetTitle className="text-2xl md:text-3xl font-bold pr-8">{selectedSession.title}</SheetTitle>
               </SheetHeader>
               <div className="mt-6 md:mt-8 space-y-5 md:space-y-6">
                 <div>
                   <div className="flex items-center gap-4 mb-6">
-                    <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      <Icon name="User" size={28} className="text-primary" />
+                    <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Icon name="User" size={24} className="text-primary" />
                     </div>
                     <div>
-                      <p className="font-bold text-base md:text-lg">{selectedSession.speaker}</p>
-                      <p className="text-sm md:text-base text-muted-foreground">{selectedSession.role}</p>
+                      <p className="font-bold text-base">{selectedSession.speaker}</p>
+                      <p className="text-sm text-muted-foreground">{selectedSession.role}</p>
                     </div>
                   </div>
                 </div>
 
                 <Separator />
 
-                <div className="space-y-3 md:space-y-4">
-                  <div className="flex items-center gap-3 text-sm md:text-base">
-                    <Icon name="MapPin" size={18} className="text-muted-foreground" />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 text-sm">
+                    <Icon name="MapPin" size={16} className="text-muted-foreground" />
                     <span>{selectedSession.hall}</span>
                   </div>
-                  <div className="flex items-center gap-3 text-sm md:text-base">
-                    <Icon name="Clock" size={18} className="text-muted-foreground" />
+                  <div className="flex items-center gap-3 text-sm">
+                    <Icon name="Clock" size={16} className="text-muted-foreground" />
                     <span>{selectedSession.startTime} - {selectedSession.endTime}</span>
                   </div>
                 </div>
@@ -729,8 +734,8 @@ const EventSchedule = () => {
                 <Separator />
 
                 <div>
-                  <h3 className="font-bold text-base md:text-lg mb-3">О докладе</h3>
-                  <p className="text-sm md:text-base text-muted-foreground leading-relaxed mb-4">
+                  <h3 className="font-bold text-base mb-3">О докладе</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
                     {selectedSession.description}
                   </p>
                 </div>
@@ -739,12 +744,12 @@ const EventSchedule = () => {
                   <>
                     <Separator />
                     <div>
-                      <h3 className="font-bold text-base md:text-lg mb-3">Основные тезисы</h3>
+                      <h3 className="font-bold text-base mb-3">Основные тезисы</h3>
                       <ul className="space-y-2">
                         {selectedSession.bulletPoints.map((point, idx) => (
                           <li key={idx} className="flex items-start gap-3">
-                            <span className="text-primary text-lg mt-1">•</span>
-                            <p className="text-sm md:text-base text-muted-foreground leading-relaxed flex-1">
+                            <span className="text-primary text-base mt-0.5">•</span>
+                            <p className="text-sm text-muted-foreground leading-relaxed flex-1">
                               {point}
                             </p>
                           </li>
@@ -757,10 +762,10 @@ const EventSchedule = () => {
                 <Separator />
 
                 <div>
-                  <h3 className="font-bold text-base md:text-lg mb-3">Теги</h3>
+                  <h3 className="font-bold text-base mb-3">Теги</h3>
                   <div className="flex gap-2 flex-wrap">
                     {selectedSession.tags.map(tag => (
-                      <Badge key={tag} variant="secondary" className="text-sm px-3 py-1">{tag}</Badge>
+                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
                     ))}
                   </div>
                 </div>
@@ -768,13 +773,13 @@ const EventSchedule = () => {
                 <Separator />
 
                 <Button
-                  className="w-full h-11 md:h-12 text-sm md:text-base"
+                  className="w-full h-11 text-sm"
                   variant={myPlan.includes(selectedSession.id) ? 'outline' : 'default'}
                   onClick={() => toggleMyPlan(selectedSession.id)}
                 >
                   <Icon
                     name={myPlan.includes(selectedSession.id) ? 'BookmarkCheck' : 'BookmarkPlus'}
-                    size={18}
+                    size={16}
                     className="mr-2"
                   />
                   {myPlan.includes(selectedSession.id) ? 'Удалить из плана' : 'Добавить в план'}
