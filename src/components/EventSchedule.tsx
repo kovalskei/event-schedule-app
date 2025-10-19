@@ -264,17 +264,19 @@ const EventSchedule = () => {
   
   const generateTimeLabels = () => {
     const labels: string[] = [];
-    const startHour = Math.floor(earliestTime / 60);
-    const endHour = Math.ceil(latestTime / 60);
+    const startMinute = Math.floor(earliestTime / 15) * 15;
+    const endMinute = Math.ceil(latestTime / 15) * 15;
     
-    for (let hour = startHour; hour <= endHour; hour++) {
-      labels.push(`${hour.toString().padStart(2, '0')}:00`);
+    for (let minute = startMinute; minute <= endMinute; minute += 15) {
+      const hours = Math.floor(minute / 60);
+      const mins = minute % 60;
+      labels.push(`${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`);
     }
     return labels;
   };
 
   const timeLabels = generateTimeLabels();
-  const PIXELS_PER_MINUTE = 2;
+  const PIXELS_PER_MINUTE = 3;
 
   return (
     <div className="min-h-screen bg-background">
@@ -379,14 +381,14 @@ const EventSchedule = () => {
                     <ScrollArea className="h-[700px]">
                       <div className="flex gap-4">
                         {/* Time Column */}
-                        <div className="w-20 flex-shrink-0 pt-12">
+                        <div className="w-16 flex-shrink-0 pt-12">
                           <div className="relative" style={{ height: `${(latestTime - earliestTime) * PIXELS_PER_MINUTE}px` }}>
                             {timeLabels.map((time) => {
                               const offset = (timeToMinutes(time) - earliestTime) * PIXELS_PER_MINUTE;
                               return (
                                 <div
                                   key={time}
-                                  className="absolute right-2 text-sm font-medium text-muted-foreground"
+                                  className="absolute right-3 text-xs font-normal text-muted-foreground"
                                   style={{ top: `${offset}px`, transform: 'translateY(-50%)' }}
                                 >
                                   {time}
@@ -399,11 +401,11 @@ const EventSchedule = () => {
                         {/* Halls Grid */}
                         <div className="flex-1">
                           {/* Sticky Hall Headers */}
-                          <div className="sticky top-0 bg-card z-10 pb-4 mb-4 border-b">
-                            <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))` }}>
+                          <div className="sticky top-0 bg-card z-10 pb-3 mb-3">
+                            <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))` }}>
                               {allHalls.map(hall => (
-                                <div key={hall} className="text-center">
-                                  <h4 className="font-bold text-base uppercase tracking-wide text-foreground">
+                                <div key={hall} className="text-left px-4">
+                                  <h4 className="font-bold text-lg uppercase tracking-wide text-foreground">
                                     {hall}
                                   </h4>
                                 </div>
@@ -412,12 +414,12 @@ const EventSchedule = () => {
                           </div>
 
                           {/* Sessions Timeline */}
-                          <div className="relative grid gap-3" style={{ 
+                          <div className="relative grid gap-4" style={{ 
                             gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))`,
                             height: `${(latestTime - earliestTime) * PIXELS_PER_MINUTE}px`
                           }}>
                             {allHalls.map((hall) => (
-                              <div key={hall} className="relative border-l border-muted">
+                              <div key={hall} className="relative border-l border-border">
                                 {filteredSessions
                                   .filter(s => s.hall === hall)
                                   .map(session => {
@@ -428,7 +430,7 @@ const EventSchedule = () => {
                                     return (
                                       <div
                                         key={session.id}
-                                        className="absolute left-0 right-0 px-2"
+                                        className="absolute left-0 right-0 px-3"
                                         style={{ 
                                           top: `${startOffset}px`,
                                           height: `${height}px`
@@ -436,20 +438,20 @@ const EventSchedule = () => {
                                       >
                                         <Card
                                           className={cn(
-                                            'h-full p-3 cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02] border overflow-hidden',
-                                            myPlan.includes(session.id) ? 'bg-primary/5 border-primary' : 'bg-card'
+                                            'h-full p-4 cursor-pointer transition-all hover:shadow-md border overflow-hidden',
+                                            myPlan.includes(session.id) ? 'bg-primary/5 border-primary/50' : 'bg-card/50'
                                           )}
                                           onClick={() => setSelectedSession(session)}
                                         >
                                           <div className="flex flex-col h-full">
                                             <div className="flex items-start justify-between gap-2 mb-2">
-                                              <Badge variant="secondary" className="text-xs px-2 py-0 flex-shrink-0">
-                                                {session.startTime}
-                                              </Badge>
+                                              <div className="text-xs text-muted-foreground">
+                                                {session.startTime} — {session.endTime}
+                                              </div>
                                               <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-6 w-6 flex-shrink-0 -mt-1 -mr-1"
+                                                className="h-6 w-6 flex-shrink-0 -mt-1 -mr-2"
                                                 onClick={(e) => {
                                                   e.stopPropagation();
                                                   toggleMyPlan(session.id);
@@ -458,19 +460,42 @@ const EventSchedule = () => {
                                                 <Icon
                                                   name={myPlan.includes(session.id) ? 'BookmarkCheck' : 'BookmarkPlus'}
                                                   size={14}
-                                                  className={myPlan.includes(session.id) ? 'text-primary' : ''}
+                                                  className={myPlan.includes(session.id) ? 'text-primary' : 'text-muted-foreground'}
                                                 />
                                               </Button>
                                             </div>
-                                            <h4 className="font-bold text-sm leading-tight mb-2 line-clamp-2">
+                                            
+                                            {session.tags && session.tags.length > 0 && (
+                                              <div className="flex gap-1 mb-2 flex-wrap">
+                                                <Badge variant="secondary" className="text-xs px-2 py-0.5 bg-primary/10 text-primary border-0">
+                                                  {session.tags[0]}
+                                                </Badge>
+                                              </div>
+                                            )}
+                                            
+                                            <h4 className="font-bold text-base leading-tight mb-2">
                                               {session.title}
                                             </h4>
-                                            <p className="text-xs font-medium text-foreground mb-0.5">
-                                              {session.speaker}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground line-clamp-1">
-                                              {session.role}
-                                            </p>
+                                            
+                                            <div className="mb-2">
+                                              <p className="text-sm font-medium text-foreground">
+                                                {session.speaker}
+                                              </p>
+                                              <p className="text-sm text-muted-foreground">
+                                                {session.role}
+                                              </p>
+                                            </div>
+                                            
+                                            {session.bulletPoints && session.bulletPoints.length > 0 && height > 150 && (
+                                              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                                                {session.bulletPoints.slice(0, Math.min(3, Math.floor((height - 150) / 25))).map((point, idx) => (
+                                                  <div key={idx} className="flex items-start gap-2">
+                                                    <span className="text-xs mt-1">—</span>
+                                                    <p className="text-xs leading-relaxed line-clamp-2">{point}</p>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
                                           </div>
                                         </Card>
                                       </div>
