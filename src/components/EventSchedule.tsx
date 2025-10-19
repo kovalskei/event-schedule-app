@@ -302,7 +302,7 @@ const EventSchedule = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-6 md:py-8 max-w-[1600px]">
+      <div className="container mx-auto px-4 py-6 md:py-8 max-w-[2000px]">
         {/* Header */}
         <div className="mb-6 md:mb-8 animate-fade-in">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
@@ -382,9 +382,9 @@ const EventSchedule = () => {
           </CollapsibleContent>
         </Collapsible>
 
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 md:gap-8">
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 md:gap-8">
           {/* Main Schedule */}
-          <div className="xl:col-span-3">
+          <div className="xl:col-span-4">
             <Tabs defaultValue="grid" className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-6 md:mb-8 h-11 md:h-12">
                 <TabsTrigger value="grid" className="flex items-center gap-2 text-sm md:text-base">
@@ -406,7 +406,7 @@ const EventSchedule = () => {
                       <div className={`grid gap-4`} style={{ gridTemplateColumns: `repeat(${allHalls.length}, minmax(0, 1fr))` }}>
                         {allHalls.map(hall => (
                           <div key={hall} className="px-4 py-3 bg-primary/10 rounded-lg border-2 border-primary/20">
-                            <h4 className="font-bold text-base lg:text-lg text-center text-foreground">
+                            <h4 className="font-bold text-lg lg:text-xl text-center text-foreground">
                               {hall}
                             </h4>
                           </div>
@@ -414,15 +414,15 @@ const EventSchedule = () => {
                       </div>
                     </div>
 
-                    <ScrollArea className="h-[700px]">
+                    <ScrollArea className="h-[800px]">
                       <div className="space-y-10">
                         {allTimes.map((time, timeIdx) => {
                           const sessionsAtTime = getSessionsAtTime(time);
                           return (
                             <div key={time} className="animate-fade-in" style={{ animationDelay: `${timeIdx * 0.1}s` }}>
                               <div className="mb-6">
-                                <h3 className="text-xl lg:text-2xl font-bold text-primary flex items-center gap-3">
-                                  <Icon name="Clock" size={24} />
+                                <h3 className="text-2xl lg:text-3xl font-bold text-primary flex items-center gap-3">
+                                  <Icon name="Clock" size={28} />
                                   {time}
                                 </h3>
                               </div>
@@ -441,7 +441,7 @@ const EventSchedule = () => {
                                         onClick={() => setSelectedSession(session)}
                                       >
                                         <div className="flex justify-between items-start mb-3">
-                                          <Badge variant="outline" className="text-xs">
+                                          <Badge variant="outline" className="text-sm px-3 py-1">
                                             {session.startTime} - {session.endTime}
                                           </Badge>
                                           <Button
@@ -462,12 +462,12 @@ const EventSchedule = () => {
                                         </div>
                                         
                                         {session.tags && session.tags.length > 0 && (
-                                          <div className="flex gap-1 mb-3 flex-wrap">
+                                          <div className="flex gap-1.5 mb-3 flex-wrap">
                                             {session.tags.map((tag, idx) => (
                                               <Badge 
                                                 key={idx} 
                                                 variant="secondary" 
-                                                className={cn("text-xs px-2 py-0.5 border-0 font-medium", getTagColor(tag))}
+                                                className={cn("text-sm px-3 py-1 border-0 font-medium", getTagColor(tag))}
                                               >
                                                 {tag}
                                               </Badge>
@@ -475,22 +475,22 @@ const EventSchedule = () => {
                                           </div>
                                         )}
                                         
-                                        <h4 className="font-bold text-base mb-3 leading-snug font-sans">
+                                        <h4 className="font-bold text-lg mb-3 leading-snug font-sans">
                                           {session.title}
                                         </h4>
-                                        <p className="text-sm font-medium text-foreground mb-1">
+                                        <p className="text-base font-medium text-foreground mb-1">
                                           {session.speaker}
                                         </p>
-                                        <p className="text-sm text-muted-foreground mb-3">
+                                        <p className="text-base text-muted-foreground mb-3">
                                           {session.role}
                                         </p>
                                         
                                         {session.bulletPoints && session.bulletPoints.length > 0 && (
-                                          <div className="mb-3 space-y-1">
-                                            {session.bulletPoints.slice(0, 2).map((point, idx) => (
+                                          <div className="mb-3 space-y-2">
+                                            {session.bulletPoints.slice(0, 3).map((point, idx) => (
                                               <div key={idx} className="flex items-start gap-2">
-                                                <span className="text-primary text-xs mt-0.5">•</span>
-                                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                                <span className="text-primary text-sm mt-0.5">•</span>
+                                                <p className="text-sm text-muted-foreground leading-relaxed">
                                                   {point}
                                                 </p>
                                               </div>
