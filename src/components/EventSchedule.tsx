@@ -208,6 +208,30 @@ const getDuration = (start: string, end: string): number => {
   return (endH * 60 + endM) - (startH * 60 + startM);
 };
 
+const tagColors: Record<string, string> = {
+  'AI': 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
+  'Технологии': 'bg-purple-500/15 text-purple-700 dark:text-purple-300',
+  'Бизнес': 'bg-green-500/15 text-green-700 dark:text-green-300',
+  'Цифровизация': 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
+  'Стратегия': 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
+  'Маркетинг': 'bg-pink-500/15 text-pink-700 dark:text-pink-300',
+  'Тренды': 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300',
+  'Инвестиции': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  'Стартапы': 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  'HR': 'bg-rose-500/15 text-rose-700 dark:text-rose-300',
+  'Управление': 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
+  'ESG': 'bg-lime-500/15 text-lime-700 dark:text-lime-300',
+  'Устойчивость': 'bg-teal-500/15 text-teal-700 dark:text-teal-300',
+  'Масштабирование': 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  'Финансы': 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300',
+  'Безопасность': 'bg-red-500/15 text-red-700 dark:text-red-300',
+  'Продукт': 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-300',
+  'UX': 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
+  'Архитектура': 'bg-slate-500/15 text-slate-700 dark:text-slate-300'
+};
+
+const getTagColor = (tag: string) => tagColors[tag] || 'bg-gray-500/15 text-gray-700 dark:text-gray-300';
+
 const EventSchedule = () => {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [myPlan, setMyPlan] = useState<string[]>([]);
@@ -283,7 +307,7 @@ const EventSchedule = () => {
         <div className="mb-6 md:mb-8 animate-fade-in">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-4xl md:text-6xl font-serif font-bold text-foreground mb-2 md:mb-3">
+              <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-2 md:mb-3">
                 Премиум Форум 2025
               </h1>
               <p className="text-muted-foreground text-base md:text-xl">
@@ -436,7 +460,22 @@ const EventSchedule = () => {
                                             />
                                           </Button>
                                         </div>
-                                        <h4 className="font-bold text-base mb-3 leading-snug">
+                                        
+                                        {session.tags && session.tags.length > 0 && (
+                                          <div className="flex gap-1 mb-3 flex-wrap">
+                                            {session.tags.map((tag, idx) => (
+                                              <Badge 
+                                                key={idx} 
+                                                variant="secondary" 
+                                                className={cn("text-xs px-2 py-0.5 border-0 font-medium", getTagColor(tag))}
+                                              >
+                                                {tag}
+                                              </Badge>
+                                            ))}
+                                          </div>
+                                        )}
+                                        
+                                        <h4 className="font-bold text-base mb-3 leading-snug font-sans">
                                           {session.title}
                                         </h4>
                                         <p className="text-sm font-medium text-foreground mb-1">
@@ -520,7 +559,7 @@ const EventSchedule = () => {
                                 onClick={() => setSelectedSession(session)}
                               >
                                 <div className="flex justify-between items-start mb-2">
-                                  <h4 className="font-bold text-base leading-snug flex-1 pr-2">
+                                  <h4 className="font-bold text-base leading-snug flex-1 pr-2 font-sans">
                                     {session.title}
                                   </h4>
                                   <Button
@@ -542,6 +581,21 @@ const EventSchedule = () => {
                                 <p className="text-sm text-muted-foreground mb-3">
                                   {session.startTime}, {duration} мин
                                 </p>
+                                
+                                {session.tags && session.tags.length > 0 && (
+                                  <div className="flex gap-1 mb-2 flex-wrap">
+                                    {session.tags.map((tag, idx) => (
+                                      <Badge 
+                                        key={idx} 
+                                        variant="secondary" 
+                                        className={cn("text-xs px-2 py-0.5 border-0 font-medium", getTagColor(tag))}
+                                      >
+                                        {tag}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
+                                
                                 <Badge variant="outline" className="text-xs">
                                   {session.hall}
                                 </Badge>
@@ -573,7 +627,7 @@ const EventSchedule = () => {
                           </div>
                           <div className="flex-1">
                             <Badge className="mb-3 text-sm">Идёт сейчас</Badge>
-                            <h3 className="font-serif text-2xl md:text-3xl font-bold mb-3">{session.title}</h3>
+                            <h3 className="font-sans text-2xl md:text-3xl font-bold mb-3">{session.title}</h3>
                             <p className="text-base text-foreground font-medium mb-1">
                               {session.speaker}
                             </p>
@@ -585,8 +639,14 @@ const EventSchedule = () => {
                             </p>
                             <p className="text-sm md:text-base mb-4 leading-relaxed">{session.description}</p>
                             <div className="flex gap-2 flex-wrap">
-                              {session.tags.map(tag => (
-                                <Badge key={tag} variant="secondary" className="text-sm">{tag}</Badge>
+                              {session.tags.map((tag, idx) => (
+                                <Badge 
+                                  key={idx} 
+                                  variant="secondary" 
+                                  className={cn("text-sm border-0 font-medium", getTagColor(tag))}
+                                >
+                                  {tag}
+                                </Badge>
                               ))}
                             </div>
                           </div>
@@ -659,7 +719,21 @@ const EventSchedule = () => {
                               <Icon name="X" size={14} />
                             </Button>
                           </div>
-                          <h4 className="font-bold text-sm mb-2 leading-snug">
+                          {session.tags && session.tags.length > 0 && (
+                            <div className="flex gap-1 mb-2 flex-wrap">
+                              {session.tags.map((tag, idx) => (
+                                <Badge 
+                                  key={idx} 
+                                  variant="secondary" 
+                                  className={cn("text-xs px-2 py-0.5 border-0 font-medium", getTagColor(tag))}
+                                >
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                          
+                          <h4 className="font-bold text-sm mb-2 leading-snug font-sans">
                             {session.title}
                           </h4>
                           <p className="text-xs text-muted-foreground mb-1">
@@ -698,7 +772,7 @@ const EventSchedule = () => {
           {selectedSession && (
             <div className="animate-fade-in">
               <SheetHeader>
-                <SheetTitle className="text-2xl md:text-3xl font-serif pr-8">{selectedSession.title}</SheetTitle>
+                <SheetTitle className="text-2xl md:text-3xl font-sans pr-8">{selectedSession.title}</SheetTitle>
               </SheetHeader>
               <div className="mt-6 md:mt-8 space-y-5 md:space-y-6">
                 <div>
@@ -759,8 +833,14 @@ const EventSchedule = () => {
                 <div>
                   <h3 className="font-bold text-base md:text-lg mb-3">Теги</h3>
                   <div className="flex gap-2 flex-wrap">
-                    {selectedSession.tags.map(tag => (
-                      <Badge key={tag} variant="secondary" className="text-sm px-3 py-1">{tag}</Badge>
+                    {selectedSession.tags.map((tag, idx) => (
+                      <Badge 
+                        key={idx} 
+                        variant="secondary" 
+                        className={cn("text-sm px-3 py-1 border-0 font-medium", getTagColor(tag))}
+                      >
+                        {tag}
+                      </Badge>
                     ))}
                   </div>
                 </div>
