@@ -42,11 +42,8 @@ export default function CampaignManager() {
   const [mailingLists, setMailingLists] = useState<MailingList[]>([]);
   const [selectedList, setSelectedList] = useState<MailingList | null>(null);
   
-  const [programDocId, setProgramDocId] = useState('');
-  const [painDocId, setPainDocId] = useState('');
   const [programUrl, setProgramUrl] = useState('');
   const [painUrl, setPainUrl] = useState('');
-  const [inputMode, setInputMode] = useState<'doc_id' | 'url'>('doc_id');
   const [tone, setTone] = useState('professional');
   const [testEmail, setTestEmail] = useState('');
   const [templateName, setTemplateName] = useState('HR Campaign');
@@ -66,8 +63,6 @@ export default function CampaignManager() {
 
   useEffect(() => {
     if (selectedEvent) {
-      setProgramDocId(selectedEvent.program_doc_id);
-      setPainDocId(selectedEvent.pain_doc_id);
       setTone(selectedEvent.default_tone);
       loadEventDetails(selectedEvent.id);
     }
@@ -98,16 +93,7 @@ export default function CampaignManager() {
   };
 
   const handleReadDocs = async () => {
-    if (inputMode === 'doc_id' && (!programDocId || !painDocId)) {
-      toast({
-        title: 'Ошибка',
-        description: 'Укажите ID обоих документов',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (inputMode === 'url' && (!programUrl || !painUrl)) {
+    if (!programUrl || !painUrl) {
       toast({
         title: 'Ошибка',
         description: 'Укажите ссылки на оба документа',
@@ -118,20 +104,9 @@ export default function CampaignManager() {
 
     setLoading(true);
     try {
-      let programParam = '';
-      let painParam = '';
-
-      if (inputMode === 'doc_id') {
-        programParam = `doc_id=${programDocId}`;
-        painParam = `doc_id=${painDocId}`;
-      } else {
-        programParam = `url=${encodeURIComponent(programUrl)}`;
-        painParam = `url=${encodeURIComponent(painUrl)}`;
-      }
-
       const [programRes, painRes] = await Promise.all([
-        fetch(`${FUNCTIONS.googleDocsReader}?${programParam}`),
-        fetch(`${FUNCTIONS.googleDocsReader}?${painParam}`),
+        fetch(`${FUNCTIONS.googleDocsReader}?url=${encodeURIComponent(programUrl)}`),
+        fetch(`${FUNCTIONS.googleDocsReader}?url=${encodeURIComponent(painUrl)}`),
       ]);
 
       const programData = await programRes.json();
@@ -391,7 +366,7 @@ export default function CampaignManager() {
                 Шаг 1: Источники данных
               </CardTitle>
               <CardDescription>
-                Укажите ID документов Google Docs
+                Укажите ссылки на документы Google Docs или Excel файлы
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -453,72 +428,26 @@ export default function CampaignManager() {
                   )}
                 </div>
               )}
-              <div className="flex gap-2 p-3 bg-gray-50 rounded-lg">
-                <Button
-                  variant={inputMode === 'doc_id' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setInputMode('doc_id')}
-                  className="flex-1"
-                >
-                  <Icon name="FileText" className="w-4 h-4 mr-2" />
-                  ID документа
-                </Button>
-                <Button
-                  variant={inputMode === 'url' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setInputMode('url')}
-                  className="flex-1"
-                >
-                  <Icon name="Link" className="w-4 h-4 mr-2" />
-                  Ссылка
-                </Button>
+              <div>
+                <Label htmlFor="programUrl">Ссылка на документ с программой мероприятия</Label>
+                <Input
+                  id="programUrl"
+                  value={programUrl}
+                  onChange={(e) => setProgramUrl(e.target.value)}
+                  placeholder="https://docs.google.com/document/d/..."
+                />
+                <p className="text-xs text-gray-500 mt-1">Google Docs, Notion или любая публичная ссылка</p>
               </div>
-
-              {inputMode === 'doc_id' ? (
-                <>
-                  <div>
-                    <Label htmlFor="program">ID программы мероприятия</Label>
-                    <Input
-                      id="program"
-                      value={programDocId}
-                      onChange={(e) => setProgramDocId(e.target.value)}
-                      placeholder="1abc2def3ghi..."
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="pain">ID болей ЦА</Label>
-                    <Input
-                      id="pain"
-                      value={painDocId}
-                      onChange={(e) => setPainDocId(e.target.value)}
-                      placeholder="4jkl5mno6pqr..."
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <Label htmlFor="programUrl">Ссылка на документ с программой мероприятия</Label>
-                    <Input
-                      id="programUrl"
-                      value={programUrl}
-                      onChange={(e) => setProgramUrl(e.target.value)}
-                      placeholder="https://docs.google.com/document/d/..."
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Google Docs, Notion или любая публичная ссылка</p>
-                  </div>
-                  <div>
-                    <Label htmlFor="painUrl">Ссылка на документ с болями ЦА</Label>
-                    <Input
-                      id="painUrl"
-                      value={painUrl}
-                      onChange={(e) => setPainUrl(e.target.value)}
-                      placeholder="https://docs.google.com/document/d/..."
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Google Docs, Notion или любая публичная ссылка</p>
-                  </div>
-                </>
-              )}
+              <div>
+                <Label htmlFor="painUrl">Ссылка на документ с болями ЦА</Label>
+                <Input
+                  id="painUrl"
+                  value={painUrl}
+                  onChange={(e) => setPainUrl(e.target.value)}
+                  placeholder="https://docs.google.com/document/d/..."
+                />
+                <p className="text-xs text-gray-500 mt-1">Google Docs, Notion или любая публичная ссылка</p>
+              </div>
               <div>
                 <Label htmlFor="tone">Тон письма</Label>
                 <Select value={tone} onValueChange={setTone}>
