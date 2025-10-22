@@ -1,0 +1,22 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS request for CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": "",
+      "bodyMatcher": "exact"
+    },
+    {
+      "name": "Get events list",
+      "method": "GET",
+      "path": "/?action=list_events",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "events": "array"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

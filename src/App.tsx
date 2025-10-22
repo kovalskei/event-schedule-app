@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import CampaignManager from "./pages/CampaignManager";
 import CampaignHistory from "./pages/CampaignHistory";
 import AISettings from "./pages/AISettings";
+import EventsManager from "./pages/EventsManager";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -19,7 +20,8 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<CampaignManager />} />
+          <Route path="/" element={<EventsManager />} />
+          <Route path="/campaigns" element={<CampaignManager />} />
           <Route path="/history" element={<CampaignHistory />} />
           <Route path="/ai-settings" element={<AISettings />} />
           <Route path="/dashboard" element={<Index />} />

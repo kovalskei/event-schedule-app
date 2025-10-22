@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,11 +15,32 @@ const FUNCTIONS = {
   unisender: 'https://functions.poehali.dev/c6001b4a-b44b-4358-8b02-a4e85f7da1b8',
   telegram: 'https://functions.poehali.dev/e3024a9f-3935-4618-8f44-14ef29bf5d0a',
   campaignManager: 'https://functions.poehali.dev/e54890ac-fb38-4f4d-aca0-425c559bce45',
+  eventsManager: 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750',
 };
+
+interface Event {
+  id: number;
+  name: string;
+  program_doc_id: string;
+  pain_doc_id: string;
+  default_tone: string;
+}
+
+interface MailingList {
+  id: number;
+  name: string;
+  unisender_list_id: string;
+  utm_rules_count: number;
+}
 
 export default function CampaignManager() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  
+  const [events, setEvents] = useState<Event[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [mailingLists, setMailingLists] = useState<MailingList[]>([]);
+  const [selectedList, setSelectedList] = useState<MailingList | null>(null);
   
   const [programDocId, setProgramDocId] = useState('');
   const [painDocId, setPainDocId] = useState('');
@@ -35,6 +56,43 @@ export default function CampaignManager() {
   const [generatedSubject, setGeneratedSubject] = useState('');
   const [generatedHtml, setGeneratedHtml] = useState('');
   const [templateId, setTemplateId] = useState('');
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  useEffect(() => {
+    if (selectedEvent) {
+      setProgramDocId(selectedEvent.program_doc_id);
+      setPainDocId(selectedEvent.pain_doc_id);
+      setTone(selectedEvent.default_tone);
+      loadEventDetails(selectedEvent.id);
+    }
+  }, [selectedEvent]);
+
+  const loadEvents = async () => {
+    try {
+      const res = await fetch(`${FUNCTIONS.eventsManager}?action=list_events`);
+      const data = await res.json();
+      if (!data.error) {
+        setEvents(data.events);
+      }
+    } catch (error) {
+      console.error('Failed to load events:', error);
+    }
+  };
+
+  const loadEventDetails = async (eventId: number) => {
+    try {
+      const res = await fetch(`${FUNCTIONS.eventsManager}?action=get_event&event_id=${eventId}`);
+      const data = await res.json();
+      if (!data.error) {
+        setMailingLists(data.mailing_lists);
+      }
+    } catch (error) {
+      console.error('Failed to load event details:', error);
+    }
+  };
 
   const handleReadDocs = async () => {
     if (!programDocId || !painDocId) {
