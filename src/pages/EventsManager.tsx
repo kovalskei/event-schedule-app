@@ -32,12 +32,14 @@ interface Event {
 interface MailingList {
   id: number;
   event_id: number;
-  name: string;
   unisender_list_id: string;
-  subscriber_count: number;
-  description: string;
-  utm_rules_count: number;
-  link_rules_count: number;
+  unisender_list_name: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+  utm_term: string | null;
+  utm_content: string | null;
+  created_at: string;
 }
 
 interface UniSenderList {
@@ -684,30 +686,37 @@ export default function EventsManager() {
                       <Card key={list.id}>
                         <CardHeader>
                           <div className="flex items-center justify-between">
-                            <CardTitle className="text-lg">{list.name}</CardTitle>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setNewUtm({ ...newUtm, mailing_list_id: list.id });
-                                setCreateUtmOpen(true);
-                              }}
-                            >
-                              <Icon name="Link" className="w-4 h-4 mr-2" />
-                              UTM метки
-                            </Button>
+                            <CardTitle className="text-lg">{list.unisender_list_name}</CardTitle>
+                            <Badge variant="outline">ID: {list.unisender_list_id}</Badge>
                           </div>
-                          <CardDescription>{list.description}</CardDescription>
                         </CardHeader>
                         <CardContent>
-                          <div className="flex gap-4 text-sm">
-                            <div className="flex items-center gap-1">
-                              <Icon name="Users" className="w-4 h-4 text-gray-500" />
-                              {list.subscriber_count} подписчиков
+                          <div className="space-y-2">
+                            <div className="text-sm">
+                              <span className="text-gray-500">UTM метки:</span>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Icon name="Link" className="w-4 h-4 text-gray-500" />
-                              {list.utm_rules_count} UTM правил
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <span className="text-gray-500">Source:</span> <span className="font-mono">{list.utm_source}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Medium:</span> <span className="font-mono">{list.utm_medium}</span>
+                              </div>
+                              {list.utm_campaign && (
+                                <div>
+                                  <span className="text-gray-500">Campaign:</span> <span className="font-mono">{list.utm_campaign}</span>
+                                </div>
+                              )}
+                              {list.utm_term && (
+                                <div>
+                                  <span className="text-gray-500">Term:</span> <span className="font-mono">{list.utm_term}</span>
+                                </div>
+                              )}
+                              {list.utm_content && (
+                                <div>
+                                  <span className="text-gray-500">Content:</span> <span className="font-mono">{list.utm_content}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </CardContent>
