@@ -374,46 +374,60 @@ export default function CampaignManager() {
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="event">Мероприятие</Label>
-                <Select 
-                  value={selectedEvent?.id.toString()} 
-                  onValueChange={(value) => {
-                    const event = events.find(e => e.id.toString() === value);
-                    setSelectedEvent(event || null);
-                  }}
-                >
-                  <SelectTrigger id="event">
-                    <SelectValue placeholder="Выберите мероприятие" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {events.map((event) => (
-                      <SelectItem key={event.id} value={event.id.toString()}>
-                        {event.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {selectedEvent && (
-                <div>
-                  <Label htmlFor="mailingList">Список рассылки</Label>
+                {events.length === 0 ? (
+                  <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
+                    <Icon name="AlertCircle" className="w-4 h-4" />
+                    <span>Нет мероприятий. Создайте мероприятие через <Link to="/events" className="underline font-medium">Управление мероприятиями</Link></span>
+                  </div>
+                ) : (
                   <Select 
-                    value={selectedList?.id.toString()} 
+                    value={selectedEvent?.id.toString()} 
                     onValueChange={(value) => {
-                      const list = mailingLists.find(l => l.id.toString() === value);
-                      setSelectedList(list || null);
+                      const event = events.find(e => e.id.toString() === value);
+                      setSelectedEvent(event || null);
                     }}
                   >
-                    <SelectTrigger id="mailingList">
-                      <SelectValue placeholder="Выберите список рассылки" />
+                    <SelectTrigger id="event">
+                      <SelectValue placeholder="Выберите мероприятие" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mailingLists.map((list) => (
-                        <SelectItem key={list.id} value={list.id.toString()}>
-                          {list.name}
+                      {events.map((event) => (
+                        <SelectItem key={event.id} value={event.id.toString()}>
+                          {event.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                )}
+              </div>
+              {selectedEvent && (
+                <div>
+                  <Label htmlFor="mailingList">Список рассылки</Label>
+                  {mailingLists.length === 0 ? (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
+                      <Icon name="AlertCircle" className="w-4 h-4" />
+                      <span>Списки рассылок пусты. Добавьте список через <Link to="/events" className="underline font-medium">Управление мероприятиями</Link></span>
+                    </div>
+                  ) : (
+                    <Select 
+                      value={selectedList?.id.toString()} 
+                      onValueChange={(value) => {
+                        const list = mailingLists.find(l => l.id.toString() === value);
+                        setSelectedList(list || null);
+                      }}
+                    >
+                      <SelectTrigger id="mailingList">
+                        <SelectValue placeholder="Выберите список рассылки" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mailingLists.map((list) => (
+                          <SelectItem key={list.id} value={list.id.toString()}>
+                            {list.unisender_list_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               )}
               <div>
