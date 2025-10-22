@@ -93,19 +93,37 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         )
         
-        with urllib.request.urlopen(req) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            content = result['choices'][0]['message']['content']
-            generated = json.loads(content)
-            
+        try:
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                content = result['choices'][0]['message']['content']
+                generated = json.loads(content)
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({
+                        'subject': generated.get('subject', 'Письмо от HR'),
+                        'html': generated.get('html', '<p>Контент письма</p>'),
+                        'request_id': context.request_id
+                    })
+                }
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8')
             return {
-                'statusCode': 200,
+                'statusCode': e.code,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({
-                    'subject': generated.get('subject', 'Письмо от HR'),
-                    'html': generated.get('html', '<p>Контент письма</p>'),
-                    'request_id': context.request_id
+                    'error': f'OpenAI API error: {e.code}',
+                    'details': error_body,
+                    'api_key_prefix': api_key[:10] + '...' if len(api_key) > 10 else 'invalid'
                 })
+            }
+        except Exception as e:
+            return {
+                'statusCode': 500,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': f'Error generating content: {str(e)}'})
             }
     
     return {
