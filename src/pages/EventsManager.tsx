@@ -470,9 +470,9 @@ export default function EventsManager() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            <Link to="/">
+            <Link to="/campaigns">
               <Button variant="outline">
-                <Icon name="ArrowLeft" className="w-4 h-4 mr-2" />
+                <Icon name="Mail" className="w-4 h-4 mr-2" />
                 К рассылкам
               </Button>
             </Link>
