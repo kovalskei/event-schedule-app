@@ -547,7 +547,7 @@ export default function CampaignManager() {
               
               <Button
                 onClick={handleGenerateContent}
-                disabled={loading || (inputMode === 'doc_id' ? (!programDocId || !painDocId) : (!programUrl || !painUrl))}
+                disabled={loading || !programUrl || !painUrl}
                 className="w-full"
                 size="lg"
               >
@@ -657,7 +657,7 @@ export default function CampaignManager() {
           <CardContent>
             <Button
               onClick={handleFullPipeline}
-              disabled={loading || !programDocId || !painDocId}
+              disabled={loading || !programUrl || !painUrl}
               className="w-full bg-white text-indigo-600 hover:bg-indigo-50"
               size="lg"
             >
