@@ -3,6 +3,8 @@ import os
 from typing import Dict, Any
 import urllib.request
 import urllib.parse
+import csv
+from io import StringIO
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -53,71 +55,63 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'doc_id or url parameter required'})
             }
         
-        api_key = os.environ.get('GOOGLE_DOCS_API_KEY', '')
-        
-        if not api_key:
+        try:
+            if doc_type == 'sheets':
+                export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+                
+                req = urllib.request.Request(export_url)
+                req.add_header('User-Agent', 'Mozilla/5.0')
+                
+                with urllib.request.urlopen(req) as response:
+                    csv_content = response.read().decode('utf-8')
+                    
+                    csv_reader = csv.reader(StringIO(csv_content))
+                    text_lines = []
+                    
+                    for row in csv_reader:
+                        text_lines.append('\t'.join(row))
+                    
+                    full_text = '\n'.join(text_lines)
+                    
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'doc_id': doc_id, 'type': 'sheets', 'content': full_text})
+                    }
+            else:
+                export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=txt'
+                
+                req = urllib.request.Request(export_url)
+                req.add_header('User-Agent', 'Mozilla/5.0')
+                
+                with urllib.request.urlopen(req) as response:
+                    text_content = response.read().decode('utf-8')
+                    
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'doc_id': doc_id, 'type': 'docs', 'content': text_content})
+                    }
+                    
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return {
+                    'statusCode': 404,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'Document not found or not public. Make sure the document is shared as "Anyone with the link can view"'})
+                }
+            else:
+                return {
+                    'statusCode': e.code,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': f'Failed to fetch document: {str(e)}'})
+                }
+        except Exception as e:
             return {
                 'statusCode': 500,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'GOOGLE_DOCS_API_KEY not configured'})
+                'body': json.dumps({'error': f'Error reading document: {str(e)}'})
             }
-        
-        if doc_type == 'sheets':
-            url = f'https://sheets.googleapis.com/v4/spreadsheets/{doc_id}?key={api_key}'
-            
-            req = urllib.request.Request(url)
-            
-            with urllib.request.urlopen(req) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                
-                text_content = []
-                if 'sheets' in data:
-                    for sheet in data['sheets']:
-                        sheet_title = sheet.get('properties', {}).get('title', '')
-                        text_content.append(f"\n=== {sheet_title} ===\n")
-                        
-                        sheet_name = sheet['properties']['title']
-                        values_url = f'https://sheets.googleapis.com/v4/spreadsheets/{doc_id}/values/{sheet_name}?key={api_key}'
-                        values_req = urllib.request.Request(values_url)
-                        
-                        with urllib.request.urlopen(values_req) as values_response:
-                            values_data = json.loads(values_response.read().decode('utf-8'))
-                            rows = values_data.get('values', [])
-                            
-                            for row in rows:
-                                text_content.append('\t'.join(str(cell) for cell in row))
-                                text_content.append('\n')
-                
-                full_text = ''.join(text_content)
-                
-                return {
-                    'statusCode': 200,
-                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'doc_id': doc_id, 'type': 'sheets', 'content': full_text})
-                }
-        else:
-            url = f'https://docs.googleapis.com/v1/documents/{doc_id}?key={api_key}'
-            
-            req = urllib.request.Request(url)
-            
-            with urllib.request.urlopen(req) as response:
-                data = json.loads(response.read().decode('utf-8'))
-                
-                text_content = []
-                if 'body' in data and 'content' in data['body']:
-                    for element in data['body']['content']:
-                        if 'paragraph' in element:
-                            for text_run in element['paragraph'].get('elements', []):
-                                if 'textRun' in text_run:
-                                    text_content.append(text_run['textRun']['content'])
-                
-                full_text = ''.join(text_content)
-                
-                return {
-                    'statusCode': 200,
-                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'doc_id': doc_id, 'type': 'docs', 'content': full_text})
-                }
     
     return {
         'statusCode': 405,
