@@ -9,13 +9,12 @@
       "bodyMatcher": "exact"
     },
     {
-      "name": "Empty action",
-      "method": "POST",
-      "path": "/",
-      "body": {},
-      "expectedStatus": 400,
+      "name": "Get UniSender lists",
+      "method": "GET",
+      "path": "/?action=get_lists",
+      "expectedStatus": 200,
       "expectedBody": {
-        "error": "string"
+        "lists": "array"
       },
       "bodyMatcher": "partial"
     }

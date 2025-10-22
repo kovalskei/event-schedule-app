@@ -6,8 +6,8 @@ from psycopg2.extras import RealDictCursor
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Управление мероприятиями - CRUD операции, списки рассылок, UTM правила
-    Args: event - dict с httpMethod, body (action, параметры мероприятия/списка)
+    Business: Управление мероприятиями - CRUD операций, связь с UniSender списками, UTM правила
+    Args: event - dict с httpMethod, body (action, параметры мероприятия)
     Returns: HTTP response с данными
     '''
     method: str = event.get('httpMethod', 'GET')
@@ -45,13 +45,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 cur.execute('''
                     SELECT 
                         e.*,
-                        COUNT(DISTINCT ml.id) as lists_count,
+                        COUNT(DISTINCT eml.id) as lists_count,
                         COUNT(DISTINCT c.id) as campaigns_count
                     FROM events e
-                    LEFT JOIN mailing_lists ml ON e.id = ml.event_id
-                    LEFT JOIN campaigns c ON e.id = c.event_id
+                    LEFT JOIN event_mailing_lists eml ON eml.event_id = e.id
+                    LEFT JOIN campaigns c ON c.event_id = e.id
                     GROUP BY e.id
-                    ORDER BY e.created_at DESC
+                    ORDER BY e.start_date DESC
                 ''')
                 
                 events = cur.fetchall()
@@ -59,16 +59,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'events': events}, default=str)
+                    'body': json.dumps({'events': [dict(e) for e in events]}, default=str)
                 }
             
             elif action == 'get_event':
-                event_id = params.get('event_id', 0)
+                event_id = params.get('event_id', '')
+                
+                if not event_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id required'})
+                    }
                 
                 cur.execute('SELECT * FROM events WHERE id = %s', (event_id,))
-                event_data = cur.fetchone()
+                evt = cur.fetchone()
                 
-                if not event_data:
+                if not evt:
                     return {
                         'statusCode': 404,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
@@ -76,14 +83,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    SELECT ml.*, 
-                           COUNT(ur.id) as utm_rules_count,
-                           COUNT(lr.id) as link_rules_count
-                    FROM mailing_lists ml
-                    LEFT JOIN utm_rules ur ON ml.id = ur.mailing_list_id
-                    LEFT JOIN link_rules lr ON ml.id = lr.mailing_list_id
-                    WHERE ml.event_id = %s
-                    GROUP BY ml.id
+                    SELECT * FROM event_mailing_lists 
+                    WHERE event_id = %s 
+                    ORDER BY created_at DESC
                 ''', (event_id,))
                 
                 lists = cur.fetchall()
@@ -91,22 +93,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'event': event_data, 'mailing_lists': lists}, default=str)
+                    'body': json.dumps({
+                        'event': dict(evt),
+                        'mailing_lists': [dict(l) for l in lists]
+                    }, default=str)
                 }
             
-            elif action == 'get_list_rules':
-                list_id = params.get('list_id', 0)
-                
-                cur.execute('SELECT * FROM utm_rules WHERE mailing_list_id = %s', (list_id,))
-                utm_rules = cur.fetchall()
-                
-                cur.execute('SELECT * FROM link_rules WHERE mailing_list_id = %s', (list_id,))
-                link_rules = cur.fetchall()
-                
+            else:
                 return {
-                    'statusCode': 200,
+                    'statusCode': 400,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'utm_rules': utm_rules, 'link_rules': link_rules}, default=str)
+                    'body': json.dumps({'error': 'Invalid action'})
                 }
         
         elif method == 'POST':
@@ -119,122 +116,72 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             if action == 'create_event':
                 name = body_data.get('name', '')
-                description = body_data.get('description', '')
-                start_date = body_data.get('start_date', None)
-                end_date = body_data.get('end_date', None)
+                start_date = body_data.get('start_date')
+                end_date = body_data.get('end_date')
                 program_doc_id = body_data.get('program_doc_id', '')
                 pain_doc_id = body_data.get('pain_doc_id', '')
                 default_tone = body_data.get('default_tone', 'professional')
                 
-                if not name:
+                if not name or not start_date or not end_date:
                     return {
                         'statusCode': 400,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'name required'})
+                        'body': json.dumps({'error': 'name, start_date, end_date required'})
                     }
                 
                 cur.execute('''
-                    INSERT INTO events (name, description, start_date, end_date, program_doc_id, pain_doc_id, default_tone)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING *
-                ''', (name, description, start_date, end_date, program_doc_id, pain_doc_id, default_tone))
+                    INSERT INTO events (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone))
                 
-                event_record = cur.fetchone()
+                event_id = cur.fetchone()['id']
                 conn.commit()
                 
                 return {
-                    'statusCode': 201,
+                    'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'event': event_record}, default=str)
+                    'body': json.dumps({'event_id': event_id, 'message': 'Event created'})
                 }
             
-            elif action == 'create_mailing_list':
-                event_id = body_data.get('event_id', 0)
-                name = body_data.get('name', '')
+            elif action == 'link_unisender_list':
+                event_id = body_data.get('event_id')
                 unisender_list_id = body_data.get('unisender_list_id', '')
-                segment_rules = body_data.get('segment_rules', {})
-                description = body_data.get('description', '')
-                
-                if not event_id or not name:
-                    return {
-                        'statusCode': 400,
-                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'event_id and name required'})
-                    }
-                
-                cur.execute('''
-                    INSERT INTO mailing_lists (event_id, name, unisender_list_id, segment_rules, description)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING *
-                ''', (event_id, name, unisender_list_id, json.dumps(segment_rules), description))
-                
-                mailing_list = cur.fetchone()
-                conn.commit()
-                
-                return {
-                    'statusCode': 201,
-                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'mailing_list': mailing_list}, default=str)
-                }
-            
-            elif action == 'create_utm_rule':
-                list_id = body_data.get('mailing_list_id', 0)
-                utm_source = body_data.get('utm_source', '')
-                utm_medium = body_data.get('utm_medium', '')
+                unisender_list_name = body_data.get('unisender_list_name', '')
+                utm_source = body_data.get('utm_source', 'email')
+                utm_medium = body_data.get('utm_medium', 'newsletter')
                 utm_campaign = body_data.get('utm_campaign', '')
                 utm_term = body_data.get('utm_term', '')
                 utm_content = body_data.get('utm_content', '')
-                custom_params = body_data.get('custom_params', {})
                 
-                if not list_id:
+                if not event_id or not unisender_list_id:
                     return {
                         'statusCode': 400,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'mailing_list_id required'})
+                        'body': json.dumps({'error': 'event_id and unisender_list_id required'})
                     }
                 
                 cur.execute('''
-                    INSERT INTO utm_rules (mailing_list_id, utm_source, utm_medium, utm_campaign, utm_term, utm_content, custom_params)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING *
-                ''', (list_id, utm_source, utm_medium, utm_campaign, utm_term, utm_content, json.dumps(custom_params)))
+                    INSERT INTO event_mailing_lists 
+                    (event_id, unisender_list_id, unisender_list_name, utm_source, utm_medium, utm_campaign, utm_term, utm_content)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (event_id, unisender_list_id, unisender_list_name, utm_source, utm_medium, utm_campaign, utm_term, utm_content))
                 
-                utm_rule = cur.fetchone()
+                list_id = cur.fetchone()['id']
                 conn.commit()
                 
                 return {
-                    'statusCode': 201,
+                    'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'utm_rule': utm_rule}, default=str)
+                    'body': json.dumps({'list_id': list_id, 'message': 'UniSender list linked to event'})
                 }
             
-            elif action == 'create_link_rule':
-                list_id = body_data.get('mailing_list_id', 0)
-                link_type = body_data.get('link_type', '')
-                base_url = body_data.get('base_url', '')
-                apply_utm = body_data.get('apply_utm', True)
-                custom_params = body_data.get('custom_params', {})
-                
-                if not list_id or not base_url:
-                    return {
-                        'statusCode': 400,
-                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'mailing_list_id and base_url required'})
-                    }
-                
-                cur.execute('''
-                    INSERT INTO link_rules (mailing_list_id, link_type, base_url, apply_utm, custom_params)
-                    VALUES (%s, %s, %s, %s, %s)
-                    RETURNING *
-                ''', (list_id, link_type, base_url, apply_utm, json.dumps(custom_params)))
-                
-                link_rule = cur.fetchone()
-                conn.commit()
-                
+            else:
                 return {
-                    'statusCode': 201,
+                    'statusCode': 400,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'link_rule': link_rule}, default=str)
+                    'body': json.dumps({'error': 'Invalid action'})
                 }
         
         elif method == 'PUT':
@@ -243,44 +190,101 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 body_str = '{}'
             body_data = json.loads(body_str)
             
-            action = body_data.get('action', 'update_event')
+            action = body_data.get('action', '')
             
             if action == 'update_event':
-                event_id = body_data.get('event_id', 0)
-                updates = body_data.get('updates', {})
+                event_id = body_data.get('event_id')
                 
-                if not event_id or not updates:
+                if not event_id:
                     return {
                         'statusCode': 400,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'event_id and updates required'})
+                        'body': json.dumps({'error': 'event_id required'})
                     }
                 
-                set_clause = ', '.join([f"{key} = %s" for key in updates.keys()])
-                values = list(updates.values()) + [event_id]
+                update_fields = []
+                values = []
                 
-                cur.execute(f'''
-                    UPDATE events 
-                    SET {set_clause}, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    RETURNING *
-                ''', values)
+                for field in ['name', 'start_date', 'end_date', 'program_doc_id', 'pain_doc_id', 'default_tone']:
+                    if field in body_data:
+                        update_fields.append(f"{field} = %s")
+                        values.append(body_data[field])
                 
-                updated_event = cur.fetchone()
+                if not update_fields:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'No fields to update'})
+                    }
+                
+                values.append(event_id)
+                query = f"UPDATE events SET {', '.join(update_fields)} WHERE id = %s"
+                cur.execute(query, values)
                 conn.commit()
                 
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'event': updated_event}, default=str)
+                    'body': json.dumps({'message': 'Event updated'})
+                }
+            
+            elif action == 'update_utm_rules':
+                list_id = body_data.get('list_id')
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                update_fields = []
+                values = []
+                
+                for field in ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']:
+                    if field in body_data:
+                        update_fields.append(f"{field} = %s")
+                        values.append(body_data[field])
+                
+                if not update_fields:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'No UTM fields to update'})
+                    }
+                
+                values.append(list_id)
+                query = f"UPDATE event_mailing_lists SET {', '.join(update_fields)} WHERE id = %s"
+                cur.execute(query, values)
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'UTM rules updated'})
+                }
+            
+            else:
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'Invalid action'})
                 }
         
-        return {
-            'statusCode': 405,
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'Method not allowed'})
-        }
+        else:
+            return {
+                'statusCode': 405,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'Method not allowed'})
+            }
     
+    except Exception as e:
+        conn.rollback()
+        return {
+            'statusCode': 500,
+            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'error': str(e)})
+        }
     finally:
         cur.close()
         conn.close()

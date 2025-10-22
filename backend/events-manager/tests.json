@@ -9,14 +9,14 @@
       "bodyMatcher": "exact"
     },
     {
-      "name": "Get events list",
+      "name": "Get events list (empty)",
       "method": "GET",
       "path": "/?action=list_events",
       "expectedStatus": 200,
       "expectedBody": {
-        "events": "array"
+        "events": []
       },
-      "bodyMatcher": "partial"
+      "bodyMatcher": "exact"
     }
   ]
 }

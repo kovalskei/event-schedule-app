@@ -6,9 +6,9 @@ import urllib.parse
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Управляет UniSender - создаёт шаблоны писем и отправляет тестовые копии
-    Args: event - dict с httpMethod, body (action: create_template|send_test, subject, html, test_email)
-    Returns: HTTP response с ID шаблона или статусом отправки теста
+    Business: Управляет UniSender - создаёт шаблоны, отправляет тесты, получает списки рассылки
+    Args: event - dict с httpMethod, body (action: create_template|send_test|get_lists, subject, html, test_email)
+    Returns: HTTP response с ID шаблона, статусом или списками рассылки
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -17,11 +17,60 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'statusCode': 200,
             'headers': {
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type',
                 'Access-Control-Max-Age': '86400'
             },
             'body': ''
+        }
+    
+    api_key = os.environ.get('UNISENDER_API_KEY', '')
+    
+    if not api_key:
+        return {
+            'statusCode': 500,
+            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'error': 'UNISENDER_API_KEY not configured'})
+        }
+    
+    if method == 'GET':
+        params_dict = event.get('queryStringParameters', {})
+        action = params_dict.get('action', '')
+        
+        if action == 'get_lists':
+            params = {
+                'format': 'json',
+                'api_key': api_key
+            }
+            
+            data = urllib.parse.urlencode(params).encode('utf-8')
+            req = urllib.request.Request('https://api.unisender.com/ru/api/getLists', data=data)
+            
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                
+                if 'result' in result:
+                    lists = [{
+                        'id': lst['id'],
+                        'title': lst['title']
+                    } for lst in result['result']]
+                    
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'lists': lists})
+                    }
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': result.get('error', 'Unknown error')})
+                    }
+        
+        return {
+            'statusCode': 400,
+            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'error': 'Invalid action. Use: get_lists'})
         }
     
     if method == 'POST':
@@ -37,15 +86,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({'error': 'Invalid action. Use: create_template or send_test'})
-            }
-        
-        api_key = os.environ.get('UNISENDER_API_KEY', '')
-        
-        if not api_key:
-            return {
-                'statusCode': 500,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'UNISENDER_API_KEY not configured'})
             }
         
         if action == 'create_template':
