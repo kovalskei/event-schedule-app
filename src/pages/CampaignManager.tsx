@@ -11,6 +11,7 @@ import Icon from '@/components/ui/icon';
 const FUNCTIONS = {
   googleDocsReader: 'https://functions.poehali.dev/4df54bd9-8e52-46a4-a000-7cf55c0fd37d',
   aiGenerator: 'https://functions.poehali.dev/e3a9e3f7-5973-4c72-827a-c755b5b909c0',
+  aiGeneratorAdvanced: 'https://functions.poehali.dev/24b9eee9-eec6-43b2-9e3e-ce6c7b4b5fdc',
   unisender: 'https://functions.poehali.dev/c6001b4a-b44b-4358-8b02-a4e85f7da1b8',
   telegram: 'https://functions.poehali.dev/e3024a9f-3935-4618-8f44-14ef29bf5d0a',
   campaignManager: 'https://functions.poehali.dev/e54890ac-fb38-4f4d-aca0-425c559bce45',
@@ -25,6 +26,11 @@ export default function CampaignManager() {
   const [tone, setTone] = useState('professional');
   const [testEmail, setTestEmail] = useState('');
   const [templateName, setTemplateName] = useState('HR Campaign');
+  
+  const [aiProvider, setAiProvider] = useState('openai');
+  const [aiModel, setAiModel] = useState('gpt-4o-mini');
+  const [assistantId, setAssistantId] = useState('');
+  const [useAdvanced, setUseAdvanced] = useState(false);
   
   const [generatedSubject, setGeneratedSubject] = useState('');
   const [generatedHtml, setGeneratedHtml] = useState('');
@@ -77,14 +83,26 @@ export default function CampaignManager() {
 
     setLoading(true);
     try {
-      const res = await fetch(FUNCTIONS.aiGenerator, {
+      const apiUrl = useAdvanced ? FUNCTIONS.aiGeneratorAdvanced : FUNCTIONS.aiGenerator;
+      
+      const requestBody: any = {
+        program_text: docs.programText,
+        pain_points_text: docs.painText,
+        tone,
+      };
+      
+      if (useAdvanced) {
+        requestBody.ai_provider = aiProvider;
+        requestBody.model = aiModel;
+        if (assistantId) {
+          requestBody.assistant_id = assistantId;
+        }
+      }
+      
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          program_text: docs.programText,
-          pain_points_text: docs.painText,
-          tone,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json();
@@ -96,9 +114,13 @@ export default function CampaignManager() {
       setGeneratedSubject(data.subject);
       setGeneratedHtml(data.html);
 
+      const providerText = data.ai_provider === 'claude' ? 'Claude' : 
+                          data.assistant_id ? `OpenAI Assistant (${data.assistant_id})` :
+                          data.model || 'ИИ';
+
       toast({
         title: 'Контент сгенерирован',
-        description: 'Письмо готово к созданию шаблона',
+        description: `Письмо создано с помощью ${providerText}`,
       });
     } catch (error: any) {
       toast({
@@ -264,12 +286,20 @@ export default function CampaignManager() {
               Автоматическая генерация и отправка персонализированных писем
             </p>
           </div>
-          <Link to="/history">
-            <Button variant="outline">
-              <Icon name="History" className="w-4 h-4 mr-2" />
-              История
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link to="/ai-settings">
+              <Button variant="outline">
+                <Icon name="Settings" className="w-4 h-4 mr-2" />
+                Настройка ИИ
+              </Button>
+            </Link>
+            <Link to="/history">
+              <Button variant="outline">
+                <Icon name="History" className="w-4 h-4 mr-2" />
+                История
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -318,25 +348,97 @@ export default function CampaignManager() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Icon name="Sparkles" className="w-5 h-5" />
-                Шаг 2: Генерация контента
+                Шаг 2: Настройка ИИ и генерация
               </CardTitle>
               <CardDescription>
-                ИИ создаст письмо на основе данных
+                Выберите модель и сгенерируйте контент
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  id="useAdvanced"
+                  checked={useAdvanced}
+                  onChange={(e) => setUseAdvanced(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <Label htmlFor="useAdvanced" className="cursor-pointer">
+                  Расширенные настройки ИИ (GPT-4o, o1, Claude, Assistants)
+                </Label>
+              </div>
+              
+              {useAdvanced && (
+                <div className="grid md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div>
+                    <Label htmlFor="aiProvider">Провайдер ИИ</Label>
+                    <Select value={aiProvider} onValueChange={setAiProvider}>
+                      <SelectTrigger id="aiProvider">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="openai">OpenAI</SelectItem>
+                        <SelectItem value="claude">Anthropic Claude</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="aiModel">Модель</Label>
+                    <Select value={aiModel} onValueChange={setAiModel}>
+                      <SelectTrigger id="aiModel">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {aiProvider === 'openai' ? (
+                          <>
+                            <SelectItem value="gpt-4o-mini">GPT-4o Mini (быстрая)</SelectItem>
+                            <SelectItem value="gpt-4o">GPT-4o (продвинутая)</SelectItem>
+                            <SelectItem value="o1-preview">o1-preview (reasoning)</SelectItem>
+                            <SelectItem value="o1-mini">o1-mini (reasoning быстрая)</SelectItem>
+                          </>
+                        ) : (
+                          <>
+                            <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
+                            <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
+                            <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
+                          </>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  {aiProvider === 'openai' && (
+                    <div>
+                      <Label htmlFor="assistantId">
+                        Assistant ID (опционально)
+                        <span className="text-xs text-gray-500 ml-1">для кастомного ассистента</span>
+                      </Label>
+                      <Input
+                        id="assistantId"
+                        value={assistantId}
+                        onChange={(e) => setAssistantId(e.target.value)}
+                        placeholder="asst_..."
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <Button
                 onClick={handleGenerateContent}
                 disabled={loading || !programDocId || !painDocId}
                 className="w-full"
+                size="lg"
               >
                 <Icon name="Wand2" className="w-4 h-4 mr-2" />
-                Сгенерировать письмо
+                {loading ? 'Генерация...' : 'Сгенерировать письмо'}
               </Button>
+              
               {generatedSubject && (
                 <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                   <p className="text-sm font-medium text-green-900 mb-1">Тема:</p>
