@@ -11,6 +11,7 @@ import Icon from '@/components/ui/icon';
 import { Link } from 'react-router-dom';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
+const SYNC_UNISENDER_URL = 'https://functions.poehali.dev/b7fefc5f-605d-4c44-8830-b5cf0c00ca0e';
 
 interface Event {
   id: number;
@@ -262,6 +263,72 @@ export default function EventsManager() {
     }
   };
 
+  const handleSyncEvent = async (eventId: number) => {
+    try {
+      const res = await fetch(SYNC_UNISENDER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync_event',
+          event_id: eventId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: 'Синхронизация выполнена',
+        description: `Список создан в UniSender (ID: ${data.unisender_list_id})`,
+      });
+
+      loadEvents();
+      if (selectedEvent?.id === eventId) {
+        loadEventDetails(eventId);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка синхронизации',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleSyncAll = async () => {
+    try {
+      const res = await fetch(SYNC_UNISENDER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync_all',
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: 'Синхронизация завершена',
+        description: `Синхронизировано событий: ${data.synced.length}, ошибок: ${data.errors.length}`,
+      });
+
+      loadEvents();
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка массовой синхронизации',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100 p-8">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -275,6 +342,10 @@ export default function EventsManager() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button onClick={handleSyncAll} variant="outline">
+              <Icon name="RefreshCw" className="w-4 h-4 mr-2" />
+              Синхронизировать все с UniSender
+            </Button>
             <Dialog open={createEventOpen} onOpenChange={setCreateEventOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -406,7 +477,7 @@ export default function EventsManager() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex gap-4 text-sm text-gray-600">
+                    <div className="flex gap-4 text-sm text-gray-600 mb-3">
                       <div className="flex items-center gap-1">
                         <Icon name="List" className="w-4 h-4" />
                         {event.lists_count} списков
@@ -416,6 +487,17 @@ export default function EventsManager() {
                         {event.campaigns_count} кампаний
                       </div>
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSyncEvent(event.id);
+                      }}
+                    >
+                      <Icon name="RefreshCw" className="w-4 h-4 mr-2" />
+                      Синхронизировать
+                    </Button>
                   </CardContent>
                 </Card>
               ))}
