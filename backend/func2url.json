@@ -1,0 +1,7 @@
+{
+  "campaign-manager": "https://functions.poehali.dev/e54890ac-fb38-4f4d-aca0-425c559bce45",
+  "unisender-manager": "https://functions.poehali.dev/c6001b4a-b44b-4358-8b02-a4e85f7da1b8",
+  "google-docs-reader": "https://functions.poehali.dev/4df54bd9-8e52-46a4-a000-7cf55c0fd37d",
+  "ai-content-generator": "https://functions.poehali.dev/e3a9e3f7-5973-4c72-827a-c755b5b909c0",
+  "telegram-notifier": "https://functions.poehali.dev/e3024a9f-3935-4618-8f44-14ef29bf5d0a"
+}
