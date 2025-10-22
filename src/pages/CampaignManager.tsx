@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,6 +56,8 @@ export default function CampaignManager() {
   const [generatedSubject, setGeneratedSubject] = useState('');
   const [generatedHtml, setGeneratedHtml] = useState('');
   const [templateId, setTemplateId] = useState('');
+  
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadEvents();
@@ -175,9 +177,13 @@ export default function CampaignManager() {
                           data.model || 'ИИ';
 
       toast({
-        title: 'Контент сгенерирован',
-        description: `Письмо создано с помощью ${providerText}`,
+        title: '✅ Письмо готово!',
+        description: `Прокрутите вниз, чтобы увидеть результат. Создано с помощью ${providerText}`,
       });
+      
+      setTimeout(() => {
+        previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
     } catch (error: any) {
       toast({
         title: 'Ошибка генерации',
@@ -668,16 +674,19 @@ export default function CampaignManager() {
         </Card>
 
         {generatedHtml && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Icon name="Eye" className="w-5 h-5" />
-                Предпросмотр письма
+          <Card ref={previewRef} className="border-2 border-green-500 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50">
+              <CardTitle className="flex items-center gap-2 text-green-700">
+                <Icon name="CheckCircle" className="w-6 h-6" />
+                ✨ Письмо сгенерировано
               </CardTitle>
+              <CardDescription>
+                Тема: <span className="font-semibold text-gray-700">{generatedSubject}</span>
+              </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <div 
-                className="border rounded-lg p-4 bg-white max-h-96 overflow-auto"
+                className="border rounded-lg p-6 bg-white max-h-[600px] overflow-auto"
                 dangerouslySetInnerHTML={{ __html: generatedHtml }}
               />
             </CardContent>
