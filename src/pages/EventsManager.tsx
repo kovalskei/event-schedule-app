@@ -6,12 +6,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { Link } from 'react-router-dom';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 const SYNC_UNISENDER_URL = 'https://functions.poehali.dev/b7fefc5f-605d-4c44-8830-b5cf0c00ca0e';
+const UNISENDER_MANAGER_URL = 'https://functions.poehali.dev/c6001b4a-b44b-4358-8b02-a4e85f7da1b8';
 
 interface Event {
   id: number;
@@ -38,15 +40,21 @@ interface MailingList {
   link_rules_count: number;
 }
 
+interface UniSenderList {
+  id: string;
+  title: string;
+}
+
 export default function EventsManager() {
   const { toast } = useToast();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [mailingLists, setMailingLists] = useState<MailingList[]>([]);
+  const [unisenderLists, setUnisenderLists] = useState<UniSenderList[]>([]);
   
   const [createEventOpen, setCreateEventOpen] = useState(false);
-  const [createListOpen, setCreateListOpen] = useState(false);
+  const [linkListOpen, setLinkListOpen] = useState(false);
   const [createUtmOpen, setCreateUtmOpen] = useState(false);
   
   const [newEvent, setNewEvent] = useState({
@@ -59,10 +67,14 @@ export default function EventsManager() {
     default_tone: 'professional',
   });
   
-  const [newList, setNewList] = useState({
-    name: '',
-    unisender_list_id: '',
-    description: '',
+  const [selectedUnisenderList, setSelectedUnisenderList] = useState({
+    list_id: '',
+    list_name: '',
+    utm_source: 'email',
+    utm_medium: 'newsletter',
+    utm_campaign: '',
+    utm_term: '',
+    utm_content: '',
   });
   
   const [newUtm, setNewUtm] = useState({
@@ -76,6 +88,7 @@ export default function EventsManager() {
 
   useEffect(() => {
     loadEvents();
+    loadUnisenderLists();
   }, []);
 
   const loadEvents = async () => {
@@ -97,6 +110,25 @@ export default function EventsManager() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUnisenderLists = async () => {
+    try {
+      const res = await fetch(`${UNISENDER_MANAGER_URL}?action=get_lists`);
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setUnisenderLists(data.lists || []);
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка загрузки списков UniSender',
+        description: error.message,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -171,11 +203,11 @@ export default function EventsManager() {
     }
   };
 
-  const handleCreateList = async () => {
-    if (!newList.name || !selectedEvent) {
+  const handleLinkUnisenderList = async () => {
+    if (!selectedUnisenderList.list_id || !selectedEvent) {
       toast({
         title: 'Ошибка',
-        description: 'Укажите название списка',
+        description: 'Выберите список из UniSender',
         variant: 'destructive',
       });
       return;
@@ -186,9 +218,15 @@ export default function EventsManager() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'create_mailing_list',
+          action: 'link_unisender_list',
           event_id: selectedEvent.id,
-          ...newList,
+          unisender_list_id: selectedUnisenderList.list_id,
+          unisender_list_name: selectedUnisenderList.list_name,
+          utm_source: selectedUnisenderList.utm_source,
+          utm_medium: selectedUnisenderList.utm_medium,
+          utm_campaign: selectedUnisenderList.utm_campaign,
+          utm_term: selectedUnisenderList.utm_term,
+          utm_content: selectedUnisenderList.utm_content,
         }),
       });
 
@@ -199,20 +237,24 @@ export default function EventsManager() {
       }
 
       toast({
-        title: 'Список создан',
-        description: `"${newList.name}" добавлен`,
+        title: 'Список привязан',
+        description: `"${selectedUnisenderList.list_name}" добавлен к мероприятию`,
       });
 
-      setCreateListOpen(false);
-      setNewList({
-        name: '',
-        unisender_list_id: '',
-        description: '',
+      setLinkListOpen(false);
+      setSelectedUnisenderList({
+        list_id: '',
+        list_name: '',
+        utm_source: 'email',
+        utm_medium: 'newsletter',
+        utm_campaign: '',
+        utm_term: '',
+        utm_content: '',
       });
       loadEventDetails(selectedEvent.id);
     } catch (error: any) {
       toast({
-        title: 'Ошибка создания списка',
+        title: 'Ошибка привязки списка',
         description: error.message,
         variant: 'destructive',
       });
@@ -534,54 +576,97 @@ export default function EventsManager() {
 
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg font-semibold">Списки рассылки</h3>
-                    <Dialog open={createListOpen} onOpenChange={setCreateListOpen}>
+                    <Dialog open={linkListOpen} onOpenChange={setLinkListOpen}>
                       <DialogTrigger asChild>
                         <Button size="sm">
                           <Icon name="Plus" className="w-4 h-4 mr-2" />
-                          Добавить список
+                          Привязать список UniSender
                         </Button>
                       </DialogTrigger>
                       <DialogContent>
                         <DialogHeader>
-                          <DialogTitle>Новый список рассылки</DialogTitle>
+                          <DialogTitle>Привязать список UniSender</DialogTitle>
                           <DialogDescription>
-                            Создайте список для сегмента аудитории
+                            Выберите существующий список из UniSender
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
                           <div>
-                            <Label htmlFor="listName">Название списка *</Label>
+                            <Label htmlFor="unisenderList">Список UniSender *</Label>
+                            <Select
+                              value={selectedUnisenderList.list_id}
+                              onValueChange={(value) => {
+                                const selectedList = unisenderLists.find(list => list.id === value);
+                                setSelectedUnisenderList({
+                                  ...selectedUnisenderList,
+                                  list_id: value,
+                                  list_name: selectedList?.title || '',
+                                });
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Выберите список" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {unisenderLists.map((list) => (
+                                  <SelectItem key={list.id} value={list.id}>
+                                    {list.title}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="utmSource">utm_source</Label>
                             <Input
-                              id="listName"
-                              value={newList.name}
-                              onChange={(e) => setNewList({ ...newList, name: e.target.value })}
-                              placeholder="VIP-гости"
+                              id="utmSource"
+                              value={selectedUnisenderList.utm_source}
+                              onChange={(e) => setSelectedUnisenderList({ ...selectedUnisenderList, utm_source: e.target.value })}
+                              placeholder="email"
                             />
                           </div>
                           <div>
-                            <Label htmlFor="unisenderList">ID списка в UniSender</Label>
+                            <Label htmlFor="utmMedium">utm_medium</Label>
                             <Input
-                              id="unisenderList"
-                              value={newList.unisender_list_id}
-                              onChange={(e) => setNewList({ ...newList, unisender_list_id: e.target.value })}
-                              placeholder="12345"
+                              id="utmMedium"
+                              value={selectedUnisenderList.utm_medium}
+                              onChange={(e) => setSelectedUnisenderList({ ...selectedUnisenderList, utm_medium: e.target.value })}
+                              placeholder="newsletter"
                             />
                           </div>
                           <div>
-                            <Label htmlFor="listDesc">Описание</Label>
-                            <Textarea
-                              id="listDesc"
-                              value={newList.description}
-                              onChange={(e) => setNewList({ ...newList, description: e.target.value })}
-                              placeholder="HR-директора из ритейла"
+                            <Label htmlFor="utmCampaign">utm_campaign</Label>
+                            <Input
+                              id="utmCampaign"
+                              value={selectedUnisenderList.utm_campaign}
+                              onChange={(e) => setSelectedUnisenderList({ ...selectedUnisenderList, utm_campaign: e.target.value })}
+                              placeholder="hrtech2025"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="utmTerm">utm_term</Label>
+                            <Input
+                              id="utmTerm"
+                              value={selectedUnisenderList.utm_term}
+                              onChange={(e) => setSelectedUnisenderList({ ...selectedUnisenderList, utm_term: e.target.value })}
+                              placeholder="vip-guests"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="utmContent">utm_content</Label>
+                            <Input
+                              id="utmContent"
+                              value={selectedUnisenderList.utm_content}
+                              onChange={(e) => setSelectedUnisenderList({ ...selectedUnisenderList, utm_content: e.target.value })}
+                              placeholder="header-cta"
                             />
                           </div>
                         </div>
                         <DialogFooter>
-                          <Button variant="outline" onClick={() => setCreateListOpen(false)}>
+                          <Button variant="outline" onClick={() => setLinkListOpen(false)}>
                             Отмена
                           </Button>
-                          <Button onClick={handleCreateList}>Создать</Button>
+                          <Button onClick={handleLinkUnisenderList}>Привязать</Button>
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
