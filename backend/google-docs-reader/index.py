@@ -6,8 +6,8 @@ import urllib.parse
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Читает содержимое Google Docs по ID документа
-    Args: event - dict с httpMethod, queryStringParameters (doc_id)
+    Business: Читает содержимое Google Docs по ID документа или ссылке
+    Args: event - dict с httpMethod, queryStringParameters (doc_id или url)
     Returns: HTTP response с текстом документа
     '''
     method: str = event.get('httpMethod', 'GET')
@@ -27,12 +27,25 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if method == 'GET':
         params = event.get('queryStringParameters', {})
         doc_id = params.get('doc_id', '')
+        doc_url = params.get('url', '')
+        
+        if doc_url:
+            if '/document/d/' in doc_url:
+                doc_id = doc_url.split('/document/d/')[1].split('/')[0]
+            elif 'id=' in doc_url:
+                doc_id = doc_url.split('id=')[1].split('&')[0]
+            else:
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'Invalid Google Docs URL format'})
+                }
         
         if not doc_id:
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'doc_id parameter required'})
+                'body': json.dumps({'error': 'doc_id or url parameter required'})
             }
         
         api_key = os.environ.get('GOOGLE_DOCS_API_KEY', '')
