@@ -373,6 +373,50 @@ export default function CampaignManager() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
+                <Label htmlFor="event">Мероприятие</Label>
+                <Select 
+                  value={selectedEvent?.id.toString()} 
+                  onValueChange={(value) => {
+                    const event = events.find(e => e.id.toString() === value);
+                    setSelectedEvent(event || null);
+                  }}
+                >
+                  <SelectTrigger id="event">
+                    <SelectValue placeholder="Выберите мероприятие" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {events.map((event) => (
+                      <SelectItem key={event.id} value={event.id.toString()}>
+                        {event.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedEvent && (
+                <div>
+                  <Label htmlFor="mailingList">Список рассылки</Label>
+                  <Select 
+                    value={selectedList?.id.toString()} 
+                    onValueChange={(value) => {
+                      const list = mailingLists.find(l => l.id.toString() === value);
+                      setSelectedList(list || null);
+                    }}
+                  >
+                    <SelectTrigger id="mailingList">
+                      <SelectValue placeholder="Выберите список рассылки" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mailingLists.map((list) => (
+                        <SelectItem key={list.id} value={list.id.toString()}>
+                          {list.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
                 <Label htmlFor="program">ID программы мероприятия</Label>
                 <Input
                   id="program"
