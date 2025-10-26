@@ -85,12 +85,6 @@ export default function EventsManager() {
     utm_content: '',
   });
 
-  const [campaignsView, setCampaignsView] = useState(false);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
-  const [contentPlan, setContentPlan] = useState<any[]>([]);
-  const [contentTypes, setContentTypes] = useState<any[]>([]);
-
   useEffect(() => {
     loadEvents();
     loadUnisenderLists();
