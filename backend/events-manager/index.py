@@ -673,6 +673,109 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': f'Import failed: {str(e)}'})
                     }
             
+            elif action == 'create_schedule_rule':
+                event_id = body_data.get('event_id')
+                mailing_list_id = body_data.get('mailing_list_id')
+                content_plan_item_id = body_data.get('content_plan_item_id')
+                ai_provider = body_data.get('ai_provider', 'demo')
+                ai_model = body_data.get('ai_model')
+                assistant_id = body_data.get('assistant_id')
+                
+                if not event_id or not mailing_list_id or not content_plan_item_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id, mailing_list_id, and content_plan_item_id required'})
+                    }
+                
+                cur.execute("""
+                    INSERT INTO schedule_rules 
+                    (event_id, mailing_list_id, content_plan_item_id, ai_provider, ai_model, assistant_id, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'pending')
+                    RETURNING id
+                """, (event_id, mailing_list_id, content_plan_item_id, ai_provider, ai_model, assistant_id))
+                
+                rule_id = cur.fetchone()[0]
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'id': rule_id, 'message': 'Schedule rule created'})
+                }
+            
+            elif action == 'get_schedule_rules':
+                event_id = body_data.get('event_id')
+                
+                if not event_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id required'})
+                    }
+                
+                cur.execute("""
+                    SELECT sr.id, sr.event_id, sr.mailing_list_id, eml.unisender_list_name,
+                           sr.content_plan_item_id, cpi.scheduled_date, ct.name as content_type,
+                           cpi.subject, sr.ai_provider, sr.status, sr.sent_at, sr.error_message,
+                           sr.created_at
+                    FROM schedule_rules sr
+                    JOIN event_mailing_lists eml ON eml.id = sr.mailing_list_id
+                    JOIN content_plan_items cpi ON cpi.id = sr.content_plan_item_id
+                    JOIN content_types ct ON ct.id = cpi.content_type_id
+                    WHERE sr.event_id = %s
+                    ORDER BY cpi.scheduled_date ASC
+                """, (event_id,))
+                
+                rules = []
+                for row in cur.fetchall():
+                    rules.append({
+                        'id': row[0],
+                        'event_id': row[1],
+                        'list_id': row[2],
+                        'list_name': row[3],
+                        'content_plan_item_id': row[4],
+                        'scheduled_date': row[5].isoformat(),
+                        'content_type': row[6],
+                        'subject': row[7],
+                        'ai_provider': row[8],
+                        'status': row[9],
+                        'sent_at': row[10].isoformat() if row[10] else None,
+                        'error_message': row[11],
+                        'created_at': row[12].isoformat()
+                    })
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'rules': rules})
+                }
+            
+            elif action == 'launch_schedule_rule':
+                rule_id = body_data.get('rule_id')
+                
+                if not rule_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'rule_id required'})
+                    }
+                
+                cur.execute("""
+                    UPDATE schedule_rules 
+                    SET status = 'processing', updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    RETURNING id
+                """, (rule_id,))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Schedule rule launched', 'id': rule_id})
+                }
+            
             else:
                 return {
                     'statusCode': 400,

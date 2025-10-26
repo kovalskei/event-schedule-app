@@ -49,6 +49,7 @@ interface CampaignDetailsProps {
   onBack: () => void;
   onAddItem: (item: Partial<ContentPlanItem>) => void;
   onLaunchCampaign: () => void;
+  onImportContentPlan: () => void;
 }
 
 export default function CampaignDetails({
@@ -57,7 +58,8 @@ export default function CampaignDetails({
   contentTypes,
   onBack,
   onAddItem,
-  onLaunchCampaign
+  onLaunchCampaign,
+  onImportContentPlan
 }: CampaignDetailsProps) {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [newItem, setNewItem] = useState({
@@ -158,6 +160,10 @@ export default function CampaignDetails({
               </CardDescription>
             </div>
             <div className="flex gap-2">
+              <Button onClick={onImportContentPlan} variant="outline">
+                <Icon name="FileSpreadsheet" className="w-4 h-4 mr-2" />
+                Импорт из Google Sheets
+              </Button>
               <Button onClick={() => setAddItemOpen(true)} variant="outline">
                 <Icon name="Plus" className="w-4 h-4 mr-2" />
                 Добавить письмо
