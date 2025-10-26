@@ -52,6 +52,7 @@ export default function CampaignManager() {
   const [aiModel, setAiModel] = useState('gpt-4o-mini');
   const [assistantId, setAssistantId] = useState('');
   const [useAdvanced, setUseAdvanced] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
   
   const [generatedSubject, setGeneratedSubject] = useState('');
   const [generatedHtml, setGeneratedHtml] = useState('');
@@ -152,6 +153,7 @@ export default function CampaignManager() {
       if (useAdvanced) {
         requestBody.ai_provider = aiProvider;
         requestBody.model = aiModel;
+        requestBody.demo_mode = demoMode;
         if (assistantId) {
           requestBody.assistant_id = assistantId;
         }
@@ -172,7 +174,8 @@ export default function CampaignManager() {
       setGeneratedSubject(data.subject);
       setGeneratedHtml(data.html);
 
-      const providerText = data.ai_provider === 'claude' ? 'Claude' : 
+      const providerText = data.ai_provider === 'demo' ? 'Демо-режим' :
+                          data.ai_provider === 'claude' ? 'Claude' : 
                           data.assistant_id ? `OpenAI Assistant (${data.assistant_id})` :
                           data.model || 'ИИ';
 
@@ -495,57 +498,74 @@ export default function CampaignManager() {
               </div>
               
               {useAdvanced && (
-                <div className="grid md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <div>
-                    <Label htmlFor="aiProvider">Провайдер ИИ</Label>
-                    <Select value={aiProvider} onValueChange={setAiProvider}>
-                      <SelectTrigger id="aiProvider">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="openai">OpenAI</SelectItem>
-                        <SelectItem value="claude">Anthropic Claude</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="demoMode"
+                      checked={demoMode}
+                      onChange={(e) => setDemoMode(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <Label htmlFor="demoMode" className="cursor-pointer font-semibold text-blue-700">
+                      🎭 Демо-режим (без OpenAI/Claude)
+                    </Label>
                   </div>
                   
-                  <div>
-                    <Label htmlFor="aiModel">Модель</Label>
-                    <Select value={aiModel} onValueChange={setAiModel}>
-                      <SelectTrigger id="aiModel">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {aiProvider === 'openai' ? (
-                          <>
-                            <SelectItem value="gpt-4o-mini">GPT-4o Mini (быстрая)</SelectItem>
-                            <SelectItem value="gpt-4o">GPT-4o (продвинутая)</SelectItem>
-                            <SelectItem value="o1-preview">o1-preview (reasoning)</SelectItem>
-                            <SelectItem value="o1-mini">o1-mini (reasoning быстрая)</SelectItem>
-                          </>
-                        ) : (
-                          <>
-                            <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
-                            <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
-                            <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
-                          </>
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  {aiProvider === 'openai' && (
-                    <div>
-                      <Label htmlFor="assistantId">
-                        Assistant ID (опционально)
-                        <span className="text-xs text-gray-500 ml-1">для кастомного ассистента</span>
-                      </Label>
-                      <Input
-                        id="assistantId"
-                        value={assistantId}
-                        onChange={(e) => setAssistantId(e.target.value)}
-                        placeholder="asst_..."
-                      />
+                  {!demoMode && (
+                    <div className="grid md:grid-cols-3 gap-4">
+                      <div>
+                        <Label htmlFor="aiProvider">Провайдер ИИ</Label>
+                        <Select value={aiProvider} onValueChange={setAiProvider}>
+                          <SelectTrigger id="aiProvider">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="openai">OpenAI</SelectItem>
+                            <SelectItem value="claude">Anthropic Claude</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div>
+                        <Label htmlFor="aiModel">Модель</Label>
+                        <Select value={aiModel} onValueChange={setAiModel}>
+                          <SelectTrigger id="aiModel">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {aiProvider === 'openai' ? (
+                              <>
+                                <SelectItem value="gpt-4o-mini">GPT-4o Mini (быстрая)</SelectItem>
+                                <SelectItem value="gpt-4o">GPT-4o (продвинутая)</SelectItem>
+                                <SelectItem value="o1-preview">o1-preview (reasoning)</SelectItem>
+                                <SelectItem value="o1-mini">o1-mini (reasoning быстрая)</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</SelectItem>
+                                <SelectItem value="claude-3-opus-20240229">Claude 3 Opus</SelectItem>
+                                <SelectItem value="claude-3-haiku-20240307">Claude 3 Haiku</SelectItem>
+                              </>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {aiProvider === 'openai' && (
+                        <div>
+                          <Label htmlFor="assistantId">
+                            Assistant ID (опционально)
+                            <span className="text-xs text-gray-500 ml-1">для кастомного ассистента</span>
+                          </Label>
+                          <Input
+                            id="assistantId"
+                            value={assistantId}
+                            onChange={(e) => setAssistantId(e.target.value)}
+                            placeholder="asst_..."
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
