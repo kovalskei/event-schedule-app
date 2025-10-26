@@ -21,7 +21,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<EventsManager />} />
-          <Route path="/campaigns" element={<CampaignManager />} />
+          <Route path="/campaigns" element={<EventsManager />} />
           <Route path="/history" element={<CampaignHistory />} />
           <Route path="/ai-settings" element={<AISettings />} />
           <Route path="/dashboard" element={<Index />} />
