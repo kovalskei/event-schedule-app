@@ -36,6 +36,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         ai_provider = body_data.get('ai_provider', 'openai')
         model = body_data.get('model', 'gpt-4o-mini')
         assistant_id = body_data.get('assistant_id', '')
+        demo_mode = body_data.get('demo_mode', False)
         
         if not program_text or not pain_points_text:
             return {
@@ -43,6 +44,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({'error': 'program_text and pain_points_text required'})
             }
+        
+        if demo_mode:
+            return generate_demo_email(program_text, pain_points_text, tone, context)
         
         prompt = f"""Ты — эксперт по HR-коммуникациям. На основе программы мероприятия и болей целевой аудитории создай:
 1. Цепляющую тему письма (до 50 символов)
@@ -281,3 +285,107 @@ def handle_claude(prompt: str, model: str, context: Any) -> Dict[str, Any]:
                 'model': claude_data['model']
             })
         }
+
+def generate_demo_email(program_text: str, pain_points_text: str, tone: str, context: Any) -> Dict[str, Any]:
+    program_topics = [line.strip() for line in program_text.split('\n') if line.strip()]
+    pain_points = [line.strip() for line in pain_points_text.split('\n') if line.strip()]
+    
+    first_topic = program_topics[0] if program_topics else "HR мероприятие"
+    first_pain = pain_points[0] if pain_points else "актуальные вызовы"
+    
+    subject = f"Решаем {first_pain}: {first_topic}"
+    
+    topics_html = ""
+    for i, topic in enumerate(program_topics[:3], 1):
+        topics_html += f"""
+        <tr>
+            <td style="padding: 15px 0; border-bottom: 1px solid #e0e0e0;">
+                <div style="display: flex; align-items: start;">
+                    <div style="background: #4F46E5; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 15px; flex-shrink: 0;">{i}</div>
+                    <div>
+                        <h3 style="margin: 0 0 5px 0; color: #1a1a1a; font-size: 16px;">{topic}</h3>
+                    </div>
+                </div>
+            </td>
+        </tr>
+        """
+    
+    pains_html = ""
+    for pain in pain_points[:3]:
+        pains_html += f'<li style="margin-bottom: 10px; color: #4a5568;">{pain}</li>'
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f7fafc;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f7fafc; padding: 40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                        <tr>
+                            <td style="padding: 40px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px 8px 0 0; text-align: center;">
+                                <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">Приглашаем на мероприятие</h1>
+                            </td>
+                        </tr>
+                        
+                        <tr>
+                            <td style="padding: 30px;">
+                                <p style="color: #2d3748; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                                    Здравствуйте!
+                                </p>
+                                
+                                <p style="color: #2d3748; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                                    Мы знаем, с какими вызовами вы сталкиваетесь:
+                                </p>
+                                
+                                <ul style="color: #4a5568; font-size: 15px; line-height: 1.8; margin: 0 0 25px 0; padding-left: 20px;">
+                                    {pains_html}
+                                </ul>
+                                
+                                <p style="color: #2d3748; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
+                                    Поэтому мы подготовили для вас специальную программу:
+                                </p>
+                                
+                                <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 30px;">
+                                    {topics_html}
+                                </table>
+                                
+                                <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
+                                    <tr>
+                                        <td align="center">
+                                            <a href="#" style="display: inline-block; padding: 16px 40px; background: #4F46E5; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 16px;">
+                                                Зарегистрироваться
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                                
+                                <p style="color: #718096; font-size: 14px; line-height: 1.6; margin: 25px 0 0 0; padding-top: 25px; border-top: 1px solid #e2e8f0;">
+                                    С уважением,<br>
+                                    Команда организаторов
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+    
+    return {
+        'statusCode': 200,
+        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+        'body': json.dumps({
+            'subject': subject[:50],
+            'html': html,
+            'request_id': context.request_id,
+            'ai_provider': 'demo',
+            'model': 'demo'
+        })
+    }
