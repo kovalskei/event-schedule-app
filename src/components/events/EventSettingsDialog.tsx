@@ -305,51 +305,37 @@ export default function EventSettingsDialog({
                 </div>
 
                 <div>
-                  <Label htmlFor="program_doc_id">ID документа с программой</Label>
+                  <Label htmlFor="program_doc_id">Программа</Label>
                   <Input
                     id="program_doc_id"
                     value={event.program_doc_id || ''}
                     onChange={(e) => setEvent({ ...event, program_doc_id: e.target.value })}
-                    placeholder="1abc2def3ghi..."
+                    placeholder="https://docs.google.com/spreadsheets/d/1HgPGrHm8BKuPB8vxW..."
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Ссылка на таблицу с программой мероприятия</p>
                 </div>
 
                 <div>
-                  <Label htmlFor="pain_doc_id">ID документа с болями ЦА</Label>
+                  <Label htmlFor="pain_doc_id">Боли ЦА</Label>
                   <Input
                     id="pain_doc_id"
                     value={event.pain_doc_id || ''}
                     onChange={(e) => setEvent({ ...event, pain_doc_id: e.target.value })}
-                    placeholder="4jkl5mno6pqr..."
+                    placeholder="https://docs.google.com/document/d/1FKsara1n8uayC..."
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Ссылка на документ с болями и таблицу с программой</p>
                 </div>
 
                 <div>
-                  <Label htmlFor="default_tone">Тон писем по умолчанию</Label>
-                  <Select
-                    value={event.default_tone}
-                    onValueChange={(value) => setEvent({ ...event, default_tone: value })}
-                  >
-                    <SelectTrigger id="default_tone">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="professional">Профессиональный</SelectItem>
-                      <SelectItem value="friendly">Дружелюбный</SelectItem>
-                      <SelectItem value="formal">Официальный</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="email_template_examples">Примеры шаблонов</Label>
+                  <Label htmlFor="email_template_examples">Промпты для НН</Label>
                   <Textarea
                     id="email_template_examples"
                     value={event.email_template_examples || ''}
                     onChange={(e) => setEvent({ ...event, email_template_examples: e.target.value })}
-                    rows={5}
-                    placeholder="Примеры успешных писем, референсы дизайна..."
+                    rows={8}
+                    placeholder="Примеры шаблонов писем с привязкой к контенту. Ссылки на боли и таблицу с программой, привязка к сервисам для рассылок"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">Инструкции для ИИ при генерации контента</p>
                 </div>
 
                 <Button onClick={handleUpdateEvent} disabled={loading} className="w-full">

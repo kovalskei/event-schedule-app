@@ -132,24 +132,42 @@ export default function EventDetails({ event, mailingLists, onBack, onLinkList, 
               <p>Нет привязанных списков</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {mailingLists.map((list) => (
-                <div key={list.id} className="p-4 border rounded-lg">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h4 className="font-medium">{list.unisender_list_name}</h4>
-                      <p className="text-sm text-gray-500">ID: {list.unisender_list_id}</p>
+                <Card key={list.id} className="border-l-4 border-l-blue-500">
+                  <CardContent className="pt-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-lg">{list.unisender_list_name}</h4>
+                        <p className="text-sm text-gray-500">ID: {list.unisender_list_id}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Badge variant="secondary">source: email</Badge>
+                        <Badge variant="secondary">medium: newsletter</Badge>
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">source: {list.utm_source}</Badge>
-                    <Badge variant="outline">medium: {list.utm_medium}</Badge>
-                    <Badge variant="outline">campaign: {list.utm_campaign}</Badge>
-                    {list.utm_term && <Badge variant="outline">term: {list.utm_term}</Badge>}
-                    {list.utm_content && <Badge variant="outline">content: {list.utm_content}</Badge>}
-                  </div>
-                </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">Тип контента:</span>
+                        <Badge variant="outline">можно несколько типов</Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">campaign:</span>
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded">{list.utm_campaign}</code>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                      <span className="text-xs text-gray-400">и выбор какой ИИ работает</span>
+                      <div className="flex gap-2">
+                        <Badge>demo</Badge>
+                        <Badge variant="outline">openai</Badge>
+                        <Badge variant="outline">claude</Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}

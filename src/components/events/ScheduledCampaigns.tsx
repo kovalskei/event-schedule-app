@@ -110,42 +110,71 @@ export default function ScheduledCampaigns({
             <div className="text-center py-8 text-gray-500">
               <Icon name="Calendar" className="w-12 h-12 mx-auto mb-3 opacity-50" />
               <p>Нет запланированных рассылок</p>
-              <p className="text-sm mt-1">Создайте расписание, чтобы начать автоматическую отправку</p>
+              <p className="text-sm mt-1">Ручной запуск всей цепочки с отправкой</p>
             </div>
           ) : (
-            <div className="space-y-6">
-              {Object.entries(groupedByList).map(([listName, items]) => (
-                <div key={listName} className="border rounded-lg p-4">
-                  <h3 className="font-medium mb-3 flex items-center gap-2">
-                    <Icon name="Users" className="w-4 h-4" />
-                    {listName}
-                  </h3>
-                  <div className="space-y-2">
-                    {items.map((schedule) => (
-                      <div key={schedule.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline">{schedule.content_type}</Badge>
-                            {getStatusBadge(schedule.status)}
-                          </div>
-                          <div className="text-sm font-medium">{schedule.subject}</div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Отправка: {new Date(schedule.scheduled_date).toLocaleString('ru-RU')}
-                          </div>
-                        </div>
-                        {schedule.status === 'pending' && (
-                          <Button 
-                            size="sm" 
-                            onClick={() => onLaunchSchedule(schedule.id)}
-                          >
-                            <Icon name="Play" className="w-3 h-3 mr-1" />
-                            Запустить
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center gap-3">
+                  <Icon name="Info" className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <p className="text-sm font-medium">Расписание отправки под каждый контент</p>
+                    <p className="text-xs text-gray-600 mt-0.5">Аналитика</p>
                   </div>
                 </div>
+                <Button size="sm" variant="outline">
+                  <Icon name="BarChart3" className="w-4 h-4 mr-2" />
+                  Посмотреть
+                </Button>
+              </div>
+
+              {Object.entries(groupedByList).map(([listName, items]) => (
+                <Card key={listName} className="border-l-4 border-l-green-500">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold flex items-center gap-2">
+                        <Icon name="Users" className="w-4 h-4" />
+                        {listName}
+                      </h3>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline">
+                          <Icon name="Play" className="w-3 h-3 mr-1" />
+                          Автозапуск всё цепочки
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {items.map((schedule, idx) => (
+                        <div key={schedule.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+                          <div className="flex items-center justify-center w-8 h-8 bg-white rounded-full border-2 border-gray-300 font-semibold text-sm">
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge variant="outline" className="text-xs">{schedule.content_type}</Badge>
+                              {getStatusBadge(schedule.status)}
+                            </div>
+                            <div className="text-sm font-medium">{schedule.subject}</div>
+                            <div className="text-xs text-gray-500">
+                              {new Date(schedule.scheduled_date).toLocaleDateString('ru-RU')}
+                            </div>
+                          </div>
+                          {schedule.status === 'pending' && (
+                            <Button 
+                              size="sm" 
+                              variant="default"
+                              onClick={() => onLaunchSchedule(schedule.id)}
+                            >
+                              <Icon name="Send" className="w-3 h-3 mr-1" />
+                              Отправить
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}
