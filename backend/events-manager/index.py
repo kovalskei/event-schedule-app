@@ -570,6 +570,109 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'Campaign not found'})
                     }
             
+            elif action == 'import_content_plan':
+                event_id = body_data.get('event_id')
+                sheet_url = body_data.get('sheet_url')
+                
+                if not event_id or not sheet_url:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id and sheet_url required'})
+                    }
+                
+                import requests
+                from datetime import datetime
+                
+                try:
+                    sheet_id = sheet_url.split('/d/')[1].split('/')[0]
+                    csv_url = f'https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv'
+                    
+                    response = requests.get(csv_url)
+                    response.raise_for_status()
+                    
+                    lines = response.text.strip().split('\n')
+                    headers = [h.strip() for h in lines[0].split(',')]
+                    
+                    imported_count = 0
+                    
+                    for line in lines[1:]:
+                        parts = [p.strip().strip('"') for p in line.split(',')]
+                        if len(parts) < 3:
+                            continue
+                        
+                        row_data = dict(zip(headers, parts))
+                        
+                        date_str = row_data.get('Дата', row_data.get('Date', ''))
+                        content_type_name = row_data.get('Тип контента', row_data.get('Content Type', ''))
+                        subject = row_data.get('Тема', row_data.get('Subject', ''))
+                        key_message = row_data.get('Ключевое сообщение', row_data.get('Key Message', ''))
+                        cta_text = row_data.get('CTA', '')
+                        
+                        if not date_str or not content_type_name:
+                            continue
+                        
+                        try:
+                            scheduled_date = datetime.strptime(date_str, '%Y-%m-%d')
+                        except:
+                            try:
+                                scheduled_date = datetime.strptime(date_str, '%d.%m.%Y')
+                            except:
+                                continue
+                        
+                        cur.execute("""
+                            SELECT id FROM content_types 
+                            WHERE event_id = %s AND name = %s
+                            LIMIT 1
+                        """, (event_id, content_type_name))
+                        
+                        content_type_row = cur.fetchone()
+                        if not content_type_row:
+                            continue
+                        
+                        content_type_id = content_type_row[0]
+                        
+                        cur.execute("""
+                            SELECT id FROM campaigns 
+                            WHERE event_id = %s AND status = 'draft'
+                            ORDER BY created_at DESC LIMIT 1
+                        """, (event_id,))
+                        
+                        campaign_row = cur.fetchone()
+                        
+                        if not campaign_row:
+                            cur.execute("""
+                                INSERT INTO campaigns (event_id, name, demo_mode, status)
+                                VALUES (%s, %s, true, 'draft')
+                                RETURNING id
+                            """, (event_id, f'Автоматическая кампания {datetime.now().strftime("%Y-%m-%d")}'))
+                            campaign_row = cur.fetchone()
+                        
+                        campaign_id = campaign_row[0]
+                        
+                        cur.execute("""
+                            INSERT INTO content_plan_items 
+                            (campaign_id, content_type_id, scheduled_date, subject, key_message, cta_text, status)
+                            VALUES (%s, %s, %s, %s, %s, %s, 'pending')
+                        """, (campaign_id, content_type_id, scheduled_date, subject, key_message, cta_text))
+                        
+                        imported_count += 1
+                    
+                    conn.commit()
+                    
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'imported_count': imported_count})
+                    }
+                
+                except Exception as e:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': f'Import failed: {str(e)}'})
+                    }
+            
             else:
                 return {
                     'statusCode': 400,
