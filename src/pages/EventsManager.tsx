@@ -7,6 +7,7 @@ import EventCard from '@/components/events/EventCard';
 import CreateEventDialog from '@/components/events/CreateEventDialog';
 import LinkListDialog from '@/components/events/LinkListDialog';
 import EventDetails from '@/components/events/EventDetails';
+import EventSettingsDialog from '@/components/events/EventSettingsDialog';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 const SYNC_UNISENDER_URL = 'https://functions.poehali.dev/b7fefc5f-605d-4c44-8830-b5cf0c00ca0e';
@@ -54,6 +55,7 @@ export default function EventsManager() {
   
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [linkListOpen, setLinkListOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   
   const [newEvent, setNewEvent] = useState({
     name: '',
@@ -296,6 +298,7 @@ export default function EventsManager() {
               mailingLists={mailingLists}
               onBack={handleBackToList}
               onLinkList={() => setLinkListOpen(true)}
+              onEditSettings={() => setSettingsOpen(true)}
             />
             
             <LinkListDialog
@@ -305,6 +308,16 @@ export default function EventsManager() {
               selectedUnisenderList={selectedUnisenderList}
               onListChange={setSelectedUnisenderList}
               onLinkList={handleLinkUnisenderList}
+            />
+            
+            <EventSettingsDialog
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
+              eventId={selectedEvent.id}
+              onUpdate={() => {
+                loadEventDetails(selectedEvent.id);
+                loadEvents();
+              }}
             />
           </>
         ) : (

@@ -35,15 +35,21 @@ interface EventDetailsProps {
   mailingLists: MailingList[];
   onBack: () => void;
   onLinkList: () => void;
+  onEditSettings: () => void;
 }
 
-export default function EventDetails({ event, mailingLists, onBack, onLinkList }: EventDetailsProps) {
+export default function EventDetails({ event, mailingLists, onBack, onLinkList, onEditSettings }: EventDetailsProps) {
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between">
         <Button variant="ghost" onClick={onBack}>
           <Icon name="ArrowLeft" className="w-4 h-4 mr-2" />
           Назад к списку
+        </Button>
+        
+        <Button onClick={onEditSettings} variant="outline">
+          <Icon name="Settings" className="w-4 h-4 mr-2" />
+          Настройки мероприятия
         </Button>
       </div>
       

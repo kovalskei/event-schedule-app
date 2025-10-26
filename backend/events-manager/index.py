@@ -87,15 +87,42 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     WHERE event_id = %s 
                     ORDER BY created_at DESC
                 ''', (event_id,))
-                
                 lists = cur.fetchall()
+                
+                cur.execute('''
+                    SELECT * FROM content_types
+                    WHERE event_id = %s
+                    ORDER BY name
+                ''', (event_id,))
+                content_types = cur.fetchall()
+                
+                cur.execute('''
+                    SELECT et.*, ct.name as content_type_name
+                    FROM email_templates et
+                    JOIN content_types ct ON et.content_type_id = ct.id
+                    WHERE et.event_id = %s
+                    ORDER BY ct.name, et.name
+                ''', (event_id,))
+                templates = cur.fetchall()
+                
+                cur.execute('''
+                    SELECT cp.*, ct.name as content_type_name
+                    FROM content_plan cp
+                    JOIN content_types ct ON cp.content_type_id = ct.id
+                    WHERE cp.event_id = %s
+                    ORDER BY cp.scheduled_date, cp.created_at
+                ''', (event_id,))
+                content_plan = cur.fetchall()
                 
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                     'body': json.dumps({
                         'event': dict(evt),
-                        'mailing_lists': [dict(l) for l in lists]
+                        'mailing_lists': [dict(l) for l in lists],
+                        'content_types': [dict(ct) for ct in content_types],
+                        'email_templates': [dict(t) for t in templates],
+                        'content_plan': [dict(cp) for cp in content_plan]
                     }, default=str)
                 }
             
@@ -178,6 +205,95 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'list_id': list_id, 'message': 'UniSender list linked to event'})
                 }
             
+            elif action == 'create_content_type':
+                event_id = body_data.get('event_id')
+                name = body_data.get('name', '')
+                description = body_data.get('description', '')
+                
+                if not event_id or not name:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id and name required'})
+                    }
+                
+                cur.execute('''
+                    INSERT INTO content_types (event_id, name, description)
+                    VALUES (%s, %s, %s)
+                    RETURNING id
+                ''', (event_id, name, description))
+                
+                content_type_id = cur.fetchone()['id']
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'content_type_id': content_type_id, 'message': 'Content type created'})
+                }
+            
+            elif action == 'create_email_template':
+                event_id = body_data.get('event_id')
+                content_type_id = body_data.get('content_type_id')
+                name = body_data.get('name', '')
+                html_template = body_data.get('html_template', '')
+                subject_template = body_data.get('subject_template', '')
+                instructions = body_data.get('instructions', '')
+                
+                if not event_id or not content_type_id or not name or not html_template:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id, content_type_id, name, html_template required'})
+                    }
+                
+                cur.execute('''
+                    INSERT INTO email_templates (event_id, content_type_id, name, html_template, subject_template, instructions)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (event_id, content_type_id, name, html_template, subject_template, instructions))
+                
+                template_id = cur.fetchone()['id']
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'template_id': template_id, 'message': 'Email template created'})
+                }
+            
+            elif action == 'import_content_plan':
+                event_id = body_data.get('event_id')
+                items = body_data.get('items', [])
+                
+                if not event_id or not items:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id and items required'})
+                    }
+                
+                imported_count = 0
+                for item in items:
+                    content_type_id = item.get('content_type_id')
+                    topic = item.get('topic', '')
+                    scheduled_date = item.get('scheduled_date')
+                    
+                    if content_type_id and topic:
+                        cur.execute('''
+                            INSERT INTO content_plan (event_id, content_type_id, topic, scheduled_date)
+                            VALUES (%s, %s, %s, %s)
+                        ''', (event_id, content_type_id, topic, scheduled_date))
+                        imported_count += 1
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'imported_count': imported_count, 'message': f'{imported_count} items imported'})
+                }
+            
             else:
                 return {
                     'statusCode': 400,
@@ -206,7 +322,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 update_fields = []
                 values = []
                 
-                for field in ['name', 'start_date', 'end_date', 'program_doc_id', 'pain_doc_id', 'default_tone']:
+                for field in ['name', 'description', 'start_date', 'end_date', 'program_doc_id', 'pain_doc_id', 'default_tone', 'email_template_examples']:
                     if field in body_data:
                         update_fields.append(f"{field} = %s")
                         values.append(body_data[field])
