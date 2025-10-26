@@ -381,6 +381,195 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'message': 'UTM rules updated'})
                 }
             
+            elif action == 'create_campaign':
+                event_id = body_data.get('event_id')
+                name = body_data.get('name')
+                demo_mode = body_data.get('demo_mode', False)
+                
+                if not event_id or not name:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id and name required'})
+                    }
+                
+                cur.execute("""
+                    INSERT INTO campaigns (event_id, name, demo_mode, status)
+                    VALUES (%s, %s, %s, 'draft')
+                    RETURNING id, event_id, name, status, demo_mode, created_at
+                """, (event_id, name, demo_mode))
+                
+                campaign = cur.fetchone()
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({
+                        'id': campaign[0],
+                        'event_id': campaign[1],
+                        'name': campaign[2],
+                        'status': campaign[3],
+                        'demo_mode': campaign[4],
+                        'created_at': campaign[5].isoformat()
+                    })
+                }
+            
+            elif action == 'get_campaigns':
+                event_id = body_data.get('event_id')
+                
+                if not event_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id required'})
+                    }
+                
+                cur.execute("""
+                    SELECT c.id, c.event_id, c.name, c.status, c.demo_mode,
+                           c.scheduled_start, c.actual_start, c.completed_at,
+                           COUNT(cpi.id) as items_count,
+                           c.created_at
+                    FROM campaigns c
+                    LEFT JOIN content_plan_items cpi ON cpi.campaign_id = c.id
+                    WHERE c.event_id = %s
+                    GROUP BY c.id
+                    ORDER BY c.created_at DESC
+                """, (event_id,))
+                
+                campaigns = []
+                for row in cur.fetchall():
+                    campaigns.append({
+                        'id': row[0],
+                        'event_id': row[1],
+                        'name': row[2],
+                        'status': row[3],
+                        'demo_mode': row[4],
+                        'scheduled_start': row[5].isoformat() if row[5] else None,
+                        'actual_start': row[6].isoformat() if row[6] else None,
+                        'completed_at': row[7].isoformat() if row[7] else None,
+                        'items_count': row[8],
+                        'created_at': row[9].isoformat()
+                    })
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'campaigns': campaigns})
+                }
+            
+            elif action == 'add_content_item':
+                campaign_id = body_data.get('campaign_id')
+                content_type_id = body_data.get('content_type_id')
+                scheduled_date = body_data.get('scheduled_date')
+                subject = body_data.get('subject', '')
+                key_message = body_data.get('key_message', '')
+                cta_text = body_data.get('cta_text', '')
+                
+                if not campaign_id or not content_type_id or not scheduled_date:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'campaign_id, content_type_id, and scheduled_date required'})
+                    }
+                
+                cur.execute("""
+                    INSERT INTO content_plan_items 
+                    (campaign_id, content_type_id, scheduled_date, subject, key_message, cta_text, status)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'pending')
+                    RETURNING id
+                """, (campaign_id, content_type_id, scheduled_date, subject, key_message, cta_text))
+                
+                item_id = cur.fetchone()[0]
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'id': item_id, 'message': 'Content item added'})
+                }
+            
+            elif action == 'get_content_plan':
+                campaign_id = body_data.get('campaign_id')
+                
+                if not campaign_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'campaign_id required'})
+                    }
+                
+                cur.execute("""
+                    SELECT cpi.id, cpi.campaign_id, cpi.content_type_id, ct.name as content_type_name,
+                           cpi.scheduled_date, cpi.subject, cpi.key_message, cpi.cta_text,
+                           cpi.status, cpi.generated_html, cpi.sent_at, cpi.created_at
+                    FROM content_plan_items cpi
+                    JOIN content_types ct ON ct.id = cpi.content_type_id
+                    WHERE cpi.campaign_id = %s
+                    ORDER BY cpi.scheduled_date ASC
+                """, (campaign_id,))
+                
+                items = []
+                for row in cur.fetchall():
+                    items.append({
+                        'id': row[0],
+                        'campaign_id': row[1],
+                        'content_type_id': row[2],
+                        'content_type_name': row[3],
+                        'scheduled_date': row[4].isoformat(),
+                        'subject': row[5],
+                        'key_message': row[6],
+                        'cta_text': row[7],
+                        'status': row[8],
+                        'generated_html': row[9],
+                        'sent_at': row[10].isoformat() if row[10] else None,
+                        'created_at': row[11].isoformat()
+                    })
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'items': items})
+                }
+            
+            elif action == 'launch_campaign':
+                campaign_id = body_data.get('campaign_id')
+                
+                if not campaign_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'campaign_id required'})
+                    }
+                
+                cur.execute("""
+                    UPDATE campaigns 
+                    SET status = 'running', actual_start = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    RETURNING id, status, demo_mode
+                """, (campaign_id,))
+                
+                result = cur.fetchone()
+                conn.commit()
+                
+                if result:
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({
+                            'message': 'Campaign launched' if not result[2] else 'Campaign launched in DEMO mode',
+                            'id': result[0],
+                            'status': result[1],
+                            'demo_mode': result[2]
+                        })
+                    }
+                else:
+                    return {
+                        'statusCode': 404,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Campaign not found'})
+                    }
+            
             else:
                 return {
                     'statusCode': 400,

@@ -36,9 +36,10 @@ interface EventDetailsProps {
   onBack: () => void;
   onLinkList: () => void;
   onEditSettings: () => void;
+  onManageCampaigns: () => void;
 }
 
-export default function EventDetails({ event, mailingLists, onBack, onLinkList, onEditSettings }: EventDetailsProps) {
+export default function EventDetails({ event, mailingLists, onBack, onLinkList, onEditSettings, onManageCampaigns }: EventDetailsProps) {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -82,6 +83,29 @@ export default function EventDetails({ event, mailingLists, onBack, onLinkList, 
                 <div>Боли ЦА: <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">{event.pain_doc_id}</code></div>
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+      
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Кампании</CardTitle>
+              <CardDescription>
+                Email-кампании для этого мероприятия
+              </CardDescription>
+            </div>
+            <Button onClick={onManageCampaigns}>
+              <Icon name="Mail" className="w-4 h-4 mr-2" />
+              Управление кампаниями
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <Icon name="Mail" className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>Нажмите «Управление кампаниями» для создания и запуска</p>
           </div>
         </CardContent>
       </Card>
