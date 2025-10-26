@@ -1,0 +1,2 @@
+ALTER TABLE t_p22819116_event_schedule_app.events
+ADD COLUMN email_template_examples TEXT;

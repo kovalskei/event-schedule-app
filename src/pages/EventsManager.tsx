@@ -63,6 +63,7 @@ export default function EventsManager() {
     program_doc_id: '',
     pain_doc_id: '',
     default_tone: 'professional',
+    email_template_examples: '',
   });
   
   const [selectedUnisenderList, setSelectedUnisenderList] = useState({
@@ -181,6 +182,7 @@ export default function EventsManager() {
         program_doc_id: '',
         pain_doc_id: '',
         default_tone: 'professional',
+        email_template_examples: '',
       });
       loadEvents();
     } catch (error: any) {

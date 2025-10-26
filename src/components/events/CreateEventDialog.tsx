@@ -17,6 +17,7 @@ interface CreateEventDialogProps {
     program_doc_id: string;
     pain_doc_id: string;
     default_tone: string;
+    email_template_examples: string;
   };
   onEventChange: (event: any) => void;
   onCreateEvent: () => void;
@@ -123,6 +124,18 @@ export default function CreateEventDialog({
                 <SelectItem value="formal">Официальный</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          
+          <div>
+            <Label htmlFor="email_template_examples">Примеры шаблонов писем</Label>
+            <Textarea
+              id="email_template_examples"
+              value={newEvent.email_template_examples}
+              onChange={(e) => onEventChange({ ...newEvent, email_template_examples: e.target.value })}
+              placeholder="Примеры успешных писем, референсы дизайна, tone of voice..." 
+              rows={5}
+            />
+            <p className="text-xs text-gray-500 mt-1">Эти примеры будут использоваться ИИ при генерации писем</p>
           </div>
         </div>
         
