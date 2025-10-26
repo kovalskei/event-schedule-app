@@ -262,6 +262,56 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'template_id': template_id, 'message': 'Email template created'})
                 }
             
+            elif action == 'update_mailing_list_settings':
+                list_id = body_data.get('list_id')
+                content_type_ids = body_data.get('content_type_ids', [])
+                content_type_order = body_data.get('content_type_order', '[]')
+                ai_provider = body_data.get('ai_provider', 'openai')
+                ai_model = body_data.get('ai_model', 'gpt-4o-mini')
+                ai_assistant_id = body_data.get('ai_assistant_id')
+                demo_mode = body_data.get('demo_mode', False)
+                schedule_type = body_data.get('schedule_type', 'manual')
+                schedule_rrule = body_data.get('schedule_rrule')
+                schedule_datetime = body_data.get('schedule_datetime')
+                schedule_window_start = body_data.get('schedule_window_start', '10:00')
+                schedule_window_end = body_data.get('schedule_window_end', '19:00')
+                test_required = body_data.get('test_required', True)
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                cur.execute('''
+                    UPDATE event_mailing_lists SET
+                        content_type_ids = %s,
+                        content_type_order = %s,
+                        ai_provider = %s,
+                        ai_model = %s,
+                        ai_assistant_id = %s,
+                        demo_mode = %s,
+                        schedule_type = %s,
+                        schedule_rrule = %s,
+                        schedule_datetime = %s,
+                        schedule_window_start = %s,
+                        schedule_window_end = %s,
+                        test_required = %s
+                    WHERE id = %s
+                ''', (content_type_ids, content_type_order, ai_provider, ai_model, 
+                      ai_assistant_id, demo_mode, schedule_type, schedule_rrule, 
+                      schedule_datetime, schedule_window_start, schedule_window_end, 
+                      test_required, list_id))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Mailing list settings updated'})
+                }
+            
             elif action == 'import_content_plan':
                 event_id = body_data.get('event_id')
                 items = body_data.get('items', [])

@@ -45,6 +45,12 @@ interface UniSenderList {
   title: string;
 }
 
+interface ContentType {
+  id: number;
+  name: string;
+  description: string;
+}
+
 export default function EventsManager() {
   const { toast } = useToast();
   const [events, setEvents] = useState<Event[]>([]);
@@ -52,6 +58,7 @@ export default function EventsManager() {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [mailingLists, setMailingLists] = useState<MailingList[]>([]);
   const [unisenderLists, setUnisenderLists] = useState<UniSenderList[]>([]);
+  const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
   
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [linkListOpen, setLinkListOpen] = useState(false);
@@ -135,6 +142,7 @@ export default function EventsManager() {
 
       setSelectedEvent(data.event);
       setMailingLists(data.mailing_lists);
+      setContentTypes(data.content_types || []);
     } catch (error: any) {
       toast({
         title: 'Ошибка загрузки деталей',
@@ -296,9 +304,11 @@ export default function EventsManager() {
             <EventDetails
               event={selectedEvent}
               mailingLists={mailingLists}
+              contentTypes={contentTypes}
               onBack={handleBackToList}
               onLinkList={() => setLinkListOpen(true)}
               onEditSettings={() => setSettingsOpen(true)}
+              onUpdate={() => loadEventDetails(selectedEvent.id)}
             />
             
             <LinkListDialog

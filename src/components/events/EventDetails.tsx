@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
+import MailingListSettings from './MailingListSettings';
 
 interface Event {
   id: number;
@@ -30,15 +32,31 @@ interface MailingList {
   created_at: string;
 }
 
+interface ContentType {
+  id: number;
+  name: string;
+  description: string;
+}
+
 interface EventDetailsProps {
   event: Event;
   mailingLists: MailingList[];
+  contentTypes: ContentType[];
   onBack: () => void;
   onLinkList: () => void;
   onEditSettings: () => void;
+  onUpdate: () => void;
 }
 
-export default function EventDetails({ event, mailingLists, onBack, onLinkList, onEditSettings }: EventDetailsProps) {
+export default function EventDetails({ event, mailingLists, contentTypes, onBack, onLinkList, onEditSettings, onUpdate }: EventDetailsProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectedList, setSelectedList] = useState<MailingList | null>(null);
+
+  const handleOpenSettings = (list: MailingList) => {
+    setSelectedList(list);
+    setSettingsOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -110,20 +128,35 @@ export default function EventDetails({ event, mailingLists, onBack, onLinkList, 
           ) : (
             <div className="space-y-4">
               {mailingLists.map((list) => (
-                <div key={list.id} className="p-4 border rounded-lg">
+                <div key={list.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                   <div className="flex items-start justify-between mb-3">
-                    <div>
+                    <div className="flex-1">
                       <h4 className="font-medium">{list.unisender_list_name}</h4>
                       <p className="text-sm text-gray-500">ID: {list.unisender_list_id}</p>
                     </div>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleOpenSettings(list)}
+                    >
+                      <Icon name="Settings" className="w-4 h-4 mr-2" />
+                      Настроить
+                    </Button>
                   </div>
                   
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">source: {list.utm_source}</Badge>
-                    <Badge variant="outline">medium: {list.utm_medium}</Badge>
-                    <Badge variant="outline">campaign: {list.utm_campaign}</Badge>
-                    {list.utm_term && <Badge variant="outline">term: {list.utm_term}</Badge>}
-                    {list.utm_content && <Badge variant="outline">content: {list.utm_content}</Badge>}
+                    <Badge variant="outline">
+                      <Icon name="Tag" className="w-3 h-3 mr-1" />
+                      {list.utm_source}
+                    </Badge>
+                    <Badge variant="outline">
+                      <Icon name="Radio" className="w-3 h-3 mr-1" />
+                      {list.utm_medium}
+                    </Badge>
+                    <Badge variant="outline">
+                      <Icon name="Target" className="w-3 h-3 mr-1" />
+                      {list.utm_campaign}
+                    </Badge>
                   </div>
                 </div>
               ))}
@@ -131,6 +164,17 @@ export default function EventDetails({ event, mailingLists, onBack, onLinkList, 
           )}
         </CardContent>
       </Card>
+
+      <MailingListSettings
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        mailingList={selectedList}
+        contentTypes={contentTypes}
+        onUpdate={() => {
+          setSettingsOpen(false);
+          onUpdate();
+        }}
+      />
     </div>
   );
 }
