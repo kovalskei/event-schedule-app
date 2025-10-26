@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'react-router-dom';
 import Icon from '@/components/ui/icon';
@@ -9,10 +8,6 @@ import CreateEventDialog from '@/components/events/CreateEventDialog';
 import LinkListDialog from '@/components/events/LinkListDialog';
 import EventDetails from '@/components/events/EventDetails';
 import EventSettingsDialog from '@/components/events/EventSettingsDialog';
-import CampaignManager from '@/components/events/CampaignManager';
-import CampaignDetails from '@/components/events/CampaignDetails';
-import ContentPlanImport from '@/components/events/ContentPlanImport';
-import ScheduledCampaigns from '@/components/events/ScheduledCampaigns';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 const SYNC_UNISENDER_URL = 'https://functions.poehali.dev/b7fefc5f-605d-4c44-8830-b5cf0c00ca0e';
@@ -61,13 +56,6 @@ export default function EventsManager() {
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [linkListOpen, setLinkListOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [campaignsView, setCampaignsView] = useState(false);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
-  const [contentPlan, setContentPlan] = useState<any[]>([]);
-  const [contentTypes, setContentTypes] = useState<any[]>([]);
-  const [importOpen, setImportOpen] = useState(false);
-  const [schedules, setSchedules] = useState<any[]>([]);
   
   const [newEvent, setNewEvent] = useState({
     name: '',
@@ -273,238 +261,6 @@ export default function EventsManager() {
   const handleBackToList = () => {
     setSelectedEvent(null);
     setMailingLists([]);
-    setCampaignsView(false);
-    setSelectedCampaign(null);
-  };
-
-  const loadCampaigns = async (eventId: number) => {
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_campaigns', event_id: eventId }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setCampaigns(data.campaigns);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка загрузки кампаний',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const loadContentTypes = async (eventId: number) => {
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_content_types', event_id: eventId }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setContentTypes(data.content_types);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка загрузки типов контента',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const loadContentPlan = async (campaignId: number) => {
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_content_plan', campaign_id: campaignId }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setContentPlan(data.items);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка загрузки контент-плана',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleManageCampaigns = () => {
-    if (selectedEvent) {
-      setCampaignsView(true);
-      loadCampaigns(selectedEvent.id);
-      loadContentTypes(selectedEvent.id);
-    }
-  };
-
-  const handleCreateCampaign = async (name: string, demoMode: boolean) => {
-    if (!selectedEvent) return;
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create_campaign',
-          event_id: selectedEvent.id,
-          name,
-          demo_mode: demoMode,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      toast({
-        title: 'Кампания создана',
-        description: demoMode ? 'Кампания создана в ДЕМО-режиме' : 'Кампания создана',
-      });
-      loadCampaigns(selectedEvent.id);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка создания кампании',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleSelectCampaign = (campaign: any) => {
-    setSelectedCampaign(campaign);
-    loadContentPlan(campaign.id);
-    if (selectedEvent) loadSchedules(selectedEvent.id);
-  };
-
-  const handleAddContentItem = async (item: any) => {
-    if (!selectedCampaign) return;
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add_content_item',
-          campaign_id: selectedCampaign.id,
-          ...item,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      toast({
-        title: 'Письмо добавлено',
-        description: 'Письмо добавлено в контент-план',
-      });
-      loadContentPlan(selectedCampaign.id);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка добавления письма',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleLaunchCampaign = async () => {
-    if (!selectedCampaign) return;
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'launch_campaign',
-          campaign_id: selectedCampaign.id,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      toast({
-        title: 'Кампания запущена',
-        description: data.message,
-      });
-      loadCampaigns(selectedEvent!.id);
-      setSelectedCampaign(null);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка запуска кампании',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const loadSchedules = async (eventId: number) => {
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'get_schedule_rules', event_id: eventId }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setSchedules(data.rules);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка загрузки расписания',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleCreateSchedule = async (listId: number, contentPlanItemId: number) => {
-    if (!selectedEvent) return;
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create_schedule_rule',
-          event_id: selectedEvent.id,
-          mailing_list_id: listId,
-          content_plan_item_id: contentPlanItemId,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      toast({
-        title: 'Расписание создано',
-        description: 'Письмо добавлено в расписание рассылки',
-      });
-      loadSchedules(selectedEvent.id);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка создания расписания',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleLaunchSchedule = async (scheduleId: number) => {
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'launch_schedule_rule',
-          rule_id: scheduleId,
-        }),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      toast({
-        title: 'Рассылка запущена',
-        description: 'Письмо будет сгенерировано и отправлено',
-      });
-      if (selectedEvent) loadSchedules(selectedEvent.id);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка запуска рассылки',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
   };
 
   if (loading) {
@@ -537,63 +293,13 @@ export default function EventsManager() {
 
         {selectedEvent ? (
           <>
-            {campaignsView ? (
-              selectedCampaign ? (
-                <>
-                  <CampaignDetails
-                    campaign={selectedCampaign}
-                    contentPlan={contentPlan}
-                    contentTypes={contentTypes}
-                    onBack={() => setSelectedCampaign(null)}
-                    onAddItem={handleAddContentItem}
-                    onLaunchCampaign={handleLaunchCampaign}
-                    onImportContentPlan={() => setImportOpen(true)}
-                  />
-                  
-                  {selectedEvent && (
-                    <ScheduledCampaigns
-                      eventId={selectedEvent.id}
-                      contentPlan={contentPlan}
-                      mailingLists={mailingLists}
-                      schedules={schedules}
-                      onCreateSchedule={handleCreateSchedule}
-                      onLaunchSchedule={handleLaunchSchedule}
-                    />
-                  )}
-                  
-                  <ContentPlanImport
-                    eventId={selectedEvent!.id}
-                    onImportComplete={() => {
-                      if (selectedCampaign) loadContentPlan(selectedCampaign.id);
-                      setImportOpen(false);
-                    }}
-                  />
-                </>
-              
-              ) : (
-                <div className="space-y-6">
-                  <Button variant="ghost" onClick={() => setCampaignsView(false)}>
-                    <Icon name="ArrowLeft" className="w-4 h-4 mr-2" />
-                    Назад к мероприятию
-                  </Button>
-                  <CampaignManager
-                    eventId={selectedEvent.id}
-                    campaigns={campaigns}
-                    onCreateCampaign={handleCreateCampaign}
-                    onSelectCampaign={handleSelectCampaign}
-                  />
-                </div>
-              )
-            ) : (
-              <EventDetails
-                event={selectedEvent}
-                mailingLists={mailingLists}
-                onBack={handleBackToList}
-                onLinkList={() => setLinkListOpen(true)}
-                onEditSettings={() => setSettingsOpen(true)}
-                onManageCampaigns={handleManageCampaigns}
-              />
-            )}
+            <EventDetails
+              event={selectedEvent}
+              mailingLists={mailingLists}
+              onBack={handleBackToList}
+              onLinkList={() => setLinkListOpen(true)}
+              onEditSettings={() => setSettingsOpen(true)}
+            />
             
             <LinkListDialog
               open={linkListOpen}
