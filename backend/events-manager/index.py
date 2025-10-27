@@ -454,6 +454,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 program_topics = [line.strip() for line in program_text.split('\n') if line.strip()]
                 pain_points = [line.strip() for line in pain_points_text.split('\n') if line.strip()]
                 
+                print(f'[DEBUG] program_text length: {len(program_text)}, first 100 chars: {program_text[:100]}')
+                print(f'[DEBUG] pain_points_text length: {len(pain_points_text)}, first 100 chars: {pain_points_text[:100]}')
+                print(f'[DEBUG] program_topics count: {len(program_topics)}')
+                print(f'[DEBUG] pain_points count: {len(pain_points)}')
+                
                 ai_api_key = os.environ.get('OPENAI_API_KEY')
                 
                 created_count = 0
