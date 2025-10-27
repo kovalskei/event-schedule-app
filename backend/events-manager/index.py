@@ -663,6 +663,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 program_doc_id = evt['program_doc_id']
                 pain_doc_id = evt['pain_doc_id']
+                default_tone = evt.get('default_tone', 'professional')
+                email_template_examples = evt.get('email_template_examples', '')
                 
                 print(f'[DEBUG] Reading program from: {program_doc_id}')
                 program_text = read_google_doc(program_doc_id)
@@ -724,16 +726,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
                 ai_assistant_id = ai_settings['ai_assistant_id'] if ai_settings else ''
                 
-                openai_api_key = os.environ.get('OPENAI_API_KEY', '')
+                # Используем OpenRouter для обхода региональных ограничений
+                api_key = os.environ.get('OPENROUTER_API_KEY') or os.environ.get('OPENAI_API_KEY', '')
                 
-                if not openai_api_key:
+                if not api_key:
                     return {
                         'statusCode': 500,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'OPENAI_API_KEY not configured'})
+                        'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
                     }
                 
-                print(f'[AI] Using provider={ai_provider}, model={ai_model}, key_length={len(openai_api_key)}')
+                print(f'[AI] Using provider={ai_provider}, model={ai_model}, key_length={len(api_key)}')
                 
                 generated_count = 0
                 for row in rows:
@@ -753,44 +756,74 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                     
                     instructions = template_row['instructions'] or ''
+                    html_template = template_row['html_template'] or ''
+                    subject_template = template_row['subject_template'] or ''
                     
-                    prompt = f"""Ты - эксперт по email-маркетингу. Создай письмо на основе:
+                    tone_descriptions = {
+                        'professional': 'профессиональный и деловой',
+                        'friendly': 'дружелюбный и неформальный',
+                        'enthusiastic': 'энергичный и вдохновляющий',
+                        'formal': 'формальный и официальный',
+                        'casual': 'лёгкий и непринужденный'
+                    }
+                    tone_desc = tone_descriptions.get(default_tone, default_tone)
+                    
+                    prompt = f"""Ты - эксперт по email-маркетингу. Твоя задача - создать эффективное письмо для рассылки.
 
-Заголовок письма: {title}
+КОНТЕКСТ МЕРОПРИЯТИЯ:
+Название: {evt.get('name', '')}
+Тон общения: {tone_desc}
 
-Программа мероприятия:
-{program_text[:2000]}
+ПРОГРАММА МЕРОПРИЯТИЯ:
+{program_text[:3000]}
 
-Боли целевой аудитории:
-{pain_points_text[:1000]}
+БОЛИ ЦЕЛЕВОЙ АУДИТОРИИ:
+{pain_points_text[:2000]}
 
-Инструкции к шаблону:
-{instructions}
+ЗАДАНИЕ НА ПИСЬМО:
+Тема/заголовок: {title}
+Тип контента: {instructions}
 
-Задача:
-1. Выбери из программы темы, которые лучше всего соответствуют заголовку "{title}"
-2. Выбери из болей ЦА те, которые решаются этими темами
-3. Создай тему письма (до 60 символов) на основе заголовка
-4. Создай HTML-письмо с акцентом на выбранные боли и темы программы
+ПРИМЕРЫ СТИЛЯ ПИСЕМ (если есть):
+{email_template_examples[:1000] if email_template_examples else 'Используй профессиональный стиль email-маркетинга'}
 
-Верни JSON в формате:
-{{"subject": "тема письма", "html": "HTML код письма"}}
-"""
+ТРЕБОВАНИЯ:
+1. Изучи программу мероприятия и выбери темы, максимально соответствующие заголовку "{title}"
+2. Определи из списка болей ЦА те, которые решаются выбранными темами программы
+3. Создай цепляющую тему письма (subject) длиной до 60 символов, которая отражает суть и привлекает внимание
+4. Создай HTML-письмо:
+   - Начни с яркого крючка (боль или выгода)
+   - Покажи как программа решает эту боль
+   - Используй конкретные темы из программы
+   - Добавь призыв к действию
+   - Соблюдай тон: {tone_desc}
+   - Структурируй текст: заголовки, абзацы, списки
+   - HTML должен быть валидным и адаптивным
+
+ФОРМАТ ОТВЕТА (строго JSON):
+{{"subject": "цепляющая тема письма", "html": "<html><body>...полный HTML код письма...</body></html>"}}
+
+Верни ТОЛЬКО JSON, без дополнительных комментариев."""
                     
                     print(f'[AI] Generating for title: {title}')
                     
                     try:
+                        # Используем OpenRouter для обхода региональных ограничений OpenAI
+                        api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                        
                         req = urllib.request.Request(
-                            'https://api.openai.com/v1/chat/completions',
+                            api_url,
                             data=json.dumps({
-                                'model': ai_model,
+                                'model': 'openai/gpt-4o-mini',
                                 'messages': [{'role': 'user', 'content': prompt}],
                                 'temperature': 0.7,
                                 'max_tokens': 2000
                             }).encode('utf-8'),
                             headers={
                                 'Content-Type': 'application/json',
-                                'Authorization': f'Bearer {openai_api_key}'
+                                'Authorization': f'Bearer {api_key}',
+                                'HTTP-Referer': 'https://poehali.dev',
+                                'X-Title': 'Poehali Email Generator'
                             }
                         )
                         
