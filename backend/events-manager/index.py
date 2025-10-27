@@ -808,22 +808,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     print(f'[AI] Generating for title: {title}')
                     
                     try:
-                        # Используем OpenRouter для обхода региональных ограничений OpenAI
-                        api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                        request_payload = {
+                            'model': ai_model,
+                            'messages': [
+                                {
+                                    'role': 'system', 
+                                    'content': f'Ты профессиональный email-маркетолог. Стиль общения: {tone_desc}. Отвечаешь строго в формате JSON.'
+                                },
+                                {
+                                    'role': 'user', 
+                                    'content': prompt
+                                }
+                            ],
+                            'temperature': 0.8,
+                            'max_tokens': 4000
+                        }
+                        
+                        print(f'[AI] Request payload: model={ai_model}, temp=0.8, max_tokens=4000')
                         
                         req = urllib.request.Request(
-                            api_url,
-                            data=json.dumps({
-                                'model': 'openai/gpt-4o-mini',
-                                'messages': [{'role': 'user', 'content': prompt}],
-                                'temperature': 0.7,
-                                'max_tokens': 2000
-                            }).encode('utf-8'),
+                            'https://api.openai.com/v1/chat/completions',
+                            data=json.dumps(request_payload).encode('utf-8'),
                             headers={
                                 'Content-Type': 'application/json',
-                                'Authorization': f'Bearer {api_key}',
-                                'HTTP-Referer': 'https://poehali.dev',
-                                'X-Title': 'Poehali Email Generator'
+                                'Authorization': f'Bearer {openai_api_key}'
                             }
                         )
                         
