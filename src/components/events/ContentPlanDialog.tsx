@@ -86,6 +86,38 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
     }
   };
 
+  const handleCreateMissingTypes = async (missingTypes: string[]) => {
+    setLoading(true);
+    try {
+      const response = await fetch('https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_content_types',
+          event_id: event.id,
+          type_names: missingTypes
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка создания типов контента');
+      }
+
+      toast.success(`Создано типов контента: ${data.created_count}`);
+      onUpdate();
+      
+      // Теперь запускаем генерацию
+      await handleGenerateAll();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Ошибка создания типов');
+      console.error('[ContentPlan] Create types error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGenerateAll = async () => {
     if (preview.length === 0) {
       toast.error('Сначала загрузите контент-план');
@@ -109,11 +141,29 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
       const data = await response.json();
       
       if (!response.ok) {
-        if (data.error === 'missing_content_types') {
-          const missingList = data.missing_types?.join(', ') || '';
-          toast.error(`Отсутствуют типы контента: ${missingList}. Добавьте их в настройках мероприятия.`, {
-            duration: 8000
-          });
+        if (data.error === 'missing_content_types' && data.missing_types && data.missing_types.length > 0) {
+          const missingList = data.missing_types.join(', ');
+          toast(
+            <div className="space-y-3">
+              <div>
+                <div className="font-medium mb-1">Отсутствуют типы контента</div>
+                <div className="text-sm text-gray-600">Не найдены: {missingList}</div>
+              </div>
+              <Button 
+                size="sm" 
+                onClick={() => {
+                  toast.dismiss();
+                  handleCreateMissingTypes(data.missing_types);
+                }}
+                className="w-full"
+              >
+                <Icon name="Plus" className="w-3 h-3 mr-1" />
+                Создать и продолжить генерацию
+              </Button>
+            </div>,
+            { duration: 10000 }
+          );
+          setLoading(false);
           return;
         }
         throw new Error(data.message || data.error || 'Ошибка генерации писем');

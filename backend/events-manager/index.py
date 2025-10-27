@@ -576,6 +576,37 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'count': created_count, 'message': f'Created {created_count} drafts'})
                 }
             
+            elif action == 'create_content_types':
+                event_id = body_data.get('event_id')
+                type_names = body_data.get('type_names', [])
+                
+                if not event_id or not type_names:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id and type_names required'})
+                    }
+                
+                created_count = 0
+                for name in type_names:
+                    if not name or not name.strip():
+                        continue
+                    
+                    cur.execute('''
+                        INSERT INTO content_types (event_id, name, description)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT DO NOTHING
+                    ''', (event_id, name.strip(), f'Автоматически создан из контент-плана'))
+                    created_count += 1
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'created_count': created_count, 'message': f'Created {created_count} content types'})
+                }
+            
             elif action == 'generate_from_content_plan':
                 event_id = body_data.get('event_id')
                 event_list_id = body_data.get('event_list_id')
