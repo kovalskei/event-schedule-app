@@ -420,6 +420,37 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 created_count = 0
                 for content_type_id in content_type_ids:
+                    demo_html = f'''
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <h2 style="color: #333;">Добро пожаловать на мероприятие!</h2>
+                        <p style="color: #666; line-height: 1.6;">
+                            Это демонстрационное письмо для типа контента {content_type_id}. 
+                            После настройки AI-генерации здесь будет персонализированный контент.
+                        </p>
+                        <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <h3 style="margin-top: 0; color: #555;">Что вас ждёт:</h3>
+                            <ul style="color: #666; line-height: 1.8;">
+                                <li>Интересные доклады от экспертов</li>
+                                <li>Нетворкинг с профессионалами</li>
+                                <li>Практические кейсы и решения</li>
+                            </ul>
+                        </div>
+                        <p style="color: #666;">
+                            <strong>Дата:</strong> Уточняется<br>
+                            <strong>Место:</strong> Онлайн/Офлайн
+                        </p>
+                        <div style="margin-top: 30px; text-align: center;">
+                            <a href="#" style="background: #007bff; color: white; padding: 12px 30px; 
+                                             text-decoration: none; border-radius: 5px; display: inline-block;">
+                                Зарегистрироваться
+                            </a>
+                        </div>
+                        <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center;">
+                            Это автоматическое письмо. Пожалуйста, не отвечайте на него.
+                        </p>
+                    </div>
+                    '''
+                    
                     cur.execute('''
                         INSERT INTO generated_emails (
                             event_list_id,
@@ -432,7 +463,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         list_id,
                         content_type_id,
                         f'Черновик письма (тип {content_type_id})',
-                        f'<p>Демо-контент для типа контента {content_type_id}</p>',
+                        demo_html,
                         'draft'
                     ))
                     created_count += 1
