@@ -452,6 +452,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 program_topics = [line.strip() for line in program_text.split('\n') if line.strip()]
                 pain_points = [line.strip() for line in pain_points_text.split('\n') if line.strip()]
                 
+                ai_api_key = os.environ.get('OPENAI_API_KEY')
+                
                 created_count = 0
                 for content_type_id in content_type_ids:
                     cur.execute('''
@@ -463,16 +465,43 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     
                     template_row = cur.fetchone()
                     
-                    if not template_row or not template_row['html_template']:
+                    if not template_row:
                         continue
                     
-                    html_template = template_row['html_template']
+                    html_template = template_row['html_template'] or ''
                     subject_template = template_row['subject_template'] or 'Новое письмо'
+                    instructions = template_row['instructions'] or ''
                     
-                    final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
-                    final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
-                    final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
-                    final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
+                    if not ai_api_key:
+                        final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
+                        final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
+                        final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
+                        final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
+                    else:
+                        try:
+                            ai_response = requests.post(
+                                'https://functions.poehali.dev/8d7c9e05-6ad1-43e3-bc2a-dd9e68ceeb44',
+                                json={
+                                    'program_topics': program_topics,
+                                    'pain_points': pain_points,
+                                    'html_template': html_template,
+                                    'subject_template': subject_template,
+                                    'instructions': instructions,
+                                    'tone': mailing_list.get('default_tone', 'professional')
+                                },
+                                timeout=30
+                            )
+                            
+                            if ai_response.ok:
+                                ai_data = ai_response.json()
+                                final_html = ai_data.get('html', html_template)
+                                final_subject = ai_data.get('subject', subject_template)
+                            else:
+                                final_html = html_template
+                                final_subject = subject_template
+                        except:
+                            final_html = html_template
+                            final_subject = subject_template
                     
                     cur.execute('''
                         INSERT INTO generated_emails (
