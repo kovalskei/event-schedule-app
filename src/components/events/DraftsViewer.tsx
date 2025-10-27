@@ -111,10 +111,10 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
             </ScrollArea>
 
             {/* Предпросмотр */}
-            <div className="col-span-2 border rounded-lg flex flex-col">
+            <div className="col-span-2 border rounded-lg flex flex-col overflow-hidden">
               {selectedDraft ? (
                 <>
-                  <div className="p-4 border-b bg-gray-50">
+                  <div className="p-4 border-b bg-gray-50 flex-shrink-0">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
@@ -133,14 +133,14 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
                     </div>
                   </div>
 
-                  <ScrollArea className="flex-1 p-4">
+                  <div className="flex-1 overflow-y-auto p-4">
                     <div
                       className="prose prose-sm max-w-none"
                       dangerouslySetInnerHTML={{ __html: selectedDraft.html_content }}
                     />
-                  </ScrollArea>
+                  </div>
 
-                  <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
+                  <div className="p-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
                     <div className="text-sm text-gray-500">
                       Создано: {new Date(selectedDraft.created_at).toLocaleString('ru-RU')}
                     </div>

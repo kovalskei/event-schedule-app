@@ -11,10 +11,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns: HTTP response с данными
     '''
     method: str = event.get('httpMethod', 'GET')
-    query_params = event.get('queryStringParameters') or {}
-    action = query_params.get('action', 'unknown')
-    
-    print(f'[REQUEST] {method} action={action}')
     
     if method == 'OPTIONS':
         return {
@@ -44,6 +40,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if method == 'GET':
             params = event.get('queryStringParameters', {})
             action = params.get('action', 'list_events')
+            print(f'[REQUEST] GET action={action}')
             
             if action == 'list_events':
                 cur.execute('''
@@ -179,6 +176,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             body_data = json.loads(body_str)
             
             action = body_data.get('action', '')
+            print(f'[REQUEST] POST action={action}')
             
             if action == 'create_event':
                 name = body_data.get('name', '')
