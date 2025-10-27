@@ -857,7 +857,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 content = content[:-3]
                             content = content.strip()
                             
-                            email_data = json.loads(content)
+                            # Исправляем некорректные escape-последовательности
+                            content = content.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"')
+                            
+                            try:
+                                email_data = json.loads(content)
+                            except json.JSONDecodeError as json_err:
+                                print(f'[ERROR] JSON parse failed for "{title}": {str(json_err)}')
+                                print(f'[ERROR] Content preview: {content[:500]}')
+                                continue
                             final_subject = email_data.get('subject', title)
                             final_html = email_data.get('html', '')
                             
@@ -882,10 +890,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             
                     except urllib.error.HTTPError as e:
                         error_body = e.read().decode('utf-8') if hasattr(e, 'read') else str(e)
-                        print(f'[ERROR] OpenAI API HTTP Error for "{title}": {e.code} - {error_body}')
+                        print(f'[ERROR] API HTTP Error for "{title}": {e.code} - {error_body[:500]}')
+                        continue
+                    except urllib.error.URLError as e:
+                        print(f'[ERROR] API timeout/network error for "{title}": {str(e)}')
                         continue
                     except Exception as e:
-                        print(f'[ERROR] AI generation failed for "{title}": {type(e).__name__} - {str(e)}')
+                        print(f'[ERROR] AI generation failed for "{title}": {type(e).__name__} - {str(e)[:500]}')
                         continue
                 
                 conn.commit()
