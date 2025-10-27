@@ -379,6 +379,72 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'imported_count': imported_count, 'message': f'{imported_count} items imported'})
                 }
             
+            elif action == 'generate_drafts':
+                list_id = body_data.get('list_id')
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                cur.execute('''
+                    SELECT 
+                        eml.*,
+                        e.program_doc_id,
+                        e.pain_doc_id,
+                        e.default_tone
+                    FROM event_mailing_lists eml
+                    JOIN events e ON e.id = eml.event_id
+                    WHERE eml.id = %s
+                ''', (list_id,))
+                
+                mailing_list = cur.fetchone()
+                
+                if not mailing_list:
+                    return {
+                        'statusCode': 404,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Mailing list not found'})
+                    }
+                
+                content_type_ids = mailing_list.get('content_type_ids', [])
+                
+                if not content_type_ids:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'No content types selected'})
+                    }
+                
+                created_count = 0
+                for content_type_id in content_type_ids:
+                    cur.execute('''
+                        INSERT INTO generated_emails (
+                            event_list_id,
+                            content_type_id,
+                            subject,
+                            html_content,
+                            status
+                        ) VALUES (%s, %s, %s, %s, %s)
+                    ''', (
+                        list_id,
+                        content_type_id,
+                        f'Черновик письма (тип {content_type_id})',
+                        f'<p>Демо-контент для типа контента {content_type_id}</p>',
+                        'draft'
+                    ))
+                    created_count += 1
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'count': created_count, 'message': f'Created {created_count} drafts'})
+                }
+            
             else:
                 return {
                     'statusCode': 400,
