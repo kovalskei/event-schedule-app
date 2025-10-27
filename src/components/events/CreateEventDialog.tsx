@@ -5,6 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 interface CreateEventDialogProps {
   open: boolean;
@@ -18,6 +20,7 @@ interface CreateEventDialogProps {
     pain_doc_id: string;
     default_tone: string;
     email_template_examples: string;
+    logo_url: string;
   };
   onEventChange: (event: any) => void;
   onCreateEvent: () => void;
@@ -30,6 +33,43 @@ export default function CreateEventDialog({
   onEventChange,
   onCreateEvent,
 }: CreateEventDialogProps) {
+  const [logoUploading, setLogoUploading] = useState(false);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Пожалуйста, выберите изображение');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Размер файла не должен превышать 2 МБ');
+      return;
+    }
+
+    setLogoUploading(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        onEventChange({ ...newEvent, logo_url: base64 });
+        toast.success('Логотип загружен');
+        setLogoUploading(false);
+      };
+      reader.onerror = () => {
+        toast.error('Ошибка загрузки файла');
+        setLogoUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      toast.error('Ошибка загрузки логотипа');
+      setLogoUploading(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
@@ -126,6 +166,38 @@ export default function CreateEventDialog({
             </Select>
           </div>
           
+          <div>
+            <Label htmlFor="logo_url">Логотип для шапки писем</Label>
+            <div className="space-y-2">
+              {newEvent.logo_url && (
+                <div className="border rounded-lg p-4 bg-gray-50">
+                  <img 
+                    src={newEvent.logo_url} 
+                    alt="Logo preview" 
+                    className="h-16 object-contain"
+                  />
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => onEventChange({ ...newEvent, logo_url: '' })}
+                  >
+                    <Icon name="X" className="w-3 h-3 mr-1" />
+                    Удалить
+                  </Button>
+                </div>
+              )}
+              <Input
+                id="logo_url"
+                type="file"
+                accept="image/*"
+                onChange={handleLogoUpload}
+                disabled={logoUploading}
+              />
+              <p className="text-xs text-gray-500">Рекомендуемый размер: 600x100px, максимум 2 МБ</p>
+            </div>
+          </div>
+
           <div>
             <Label htmlFor="email_template_examples">Примеры шаблонов писем</Label>
             <Textarea

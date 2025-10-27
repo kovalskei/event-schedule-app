@@ -15,6 +15,7 @@ interface Event {
   status: string;
   lists_count: number;
   campaigns_count: number;
+  logo_url?: string;
 }
 
 interface EventCardProps {
@@ -28,6 +29,15 @@ export default function EventCard({ event, onSelect }: EventCardProps) {
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
+            {event.logo_url && (
+              <div className="mb-2">
+                <img 
+                  src={event.logo_url} 
+                  alt={`${event.name} logo`}
+                  className="h-8 object-contain"
+                />
+              </div>
+            )}
             <CardTitle className="text-xl mb-1">{event.name}</CardTitle>
             <CardDescription className="line-clamp-2">{event.description}</CardDescription>
           </div>

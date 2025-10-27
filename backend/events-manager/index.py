@@ -266,6 +266,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 pain_doc_id = body_data.get('pain_doc_id', '')
                 default_tone = body_data.get('default_tone', 'professional')
                 email_template_examples = body_data.get('email_template_examples', '')
+                logo_url = body_data.get('logo_url', '')
                 
                 if not name or not start_date or not end_date:
                     return {
@@ -275,10 +276,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    INSERT INTO events (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO events (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples, logo_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
-                ''', (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples))
+                ''', (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples, logo_url))
                 
                 event_id = cur.fetchone()['id']
                 conn.commit()
@@ -1169,7 +1170,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 update_fields = []
                 values = []
                 
-                for field in ['name', 'description', 'start_date', 'end_date', 'program_doc_id', 'pain_doc_id', 'default_tone', 'email_template_examples']:
+                for field in ['name', 'description', 'start_date', 'end_date', 'program_doc_id', 'pain_doc_id', 'default_tone', 'email_template_examples', 'logo_url']:
                     if field in body_data:
                         update_fields.append(f"{field} = %s")
                         values.append(body_data[field])

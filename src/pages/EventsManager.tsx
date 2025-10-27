@@ -25,6 +25,7 @@ interface Event {
   status: string;
   lists_count: number;
   campaigns_count: number;
+  logo_url?: string;
 }
 
 interface MailingList {
@@ -73,6 +74,7 @@ export default function EventsManager() {
     pain_doc_id: '',
     default_tone: 'professional',
     email_template_examples: '',
+    logo_url: '',
   });
   
   const [selectedUnisenderList, setSelectedUnisenderList] = useState({
@@ -193,6 +195,7 @@ export default function EventsManager() {
         pain_doc_id: '',
         default_tone: 'professional',
         email_template_examples: '',
+        logo_url: '',
       });
       loadEvents();
     } catch (error: any) {

@@ -19,6 +19,7 @@ interface Event {
   status: string;
   lists_count: number;
   campaigns_count: number;
+  logo_url?: string;
 }
 
 interface MailingList {
@@ -84,7 +85,16 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between">
-            <div>
+            <div className="flex-1">
+              {event.logo_url && (
+                <div className="mb-4">
+                  <img 
+                    src={event.logo_url} 
+                    alt={`${event.name} logo`}
+                    className="h-12 object-contain"
+                  />
+                </div>
+              )}
               <CardTitle className="text-2xl">{event.name}</CardTitle>
               <CardDescription className="mt-2">{event.description}</CardDescription>
             </div>
