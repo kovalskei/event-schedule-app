@@ -41,6 +41,8 @@ interface MailingList {
   utm_source: string;
   utm_medium: string;
   utm_campaign: string;
+  sender_email: string | null;
+  sender_name: string | null;
 }
 
 interface MailingListSettingsProps {
@@ -75,9 +77,13 @@ export default function MailingListSettings({
   const [windowStart, setWindowStart] = useState('10:00');
   const [windowEnd, setWindowEnd] = useState('19:00');
   const [testRequired, setTestRequired] = useState(true);
+  const [senderEmail, setSenderEmail] = useState('');
+  const [senderName, setSenderName] = useState('HR Team');
 
   useEffect(() => {
     if (mailingList) {
+      setSenderEmail(mailingList.sender_email || '');
+      setSenderName(mailingList.sender_name || 'HR Team');
       setSelectedContentTypes(mailingList.content_type_ids || []);
       
       try {
@@ -145,6 +151,8 @@ export default function MailingListSettings({
           schedule_window_start: windowStart,
           schedule_window_end: windowEnd,
           test_required: testRequired,
+          sender_email: senderEmail || null,
+          sender_name: senderName || 'HR Team',
         }),
       });
 
@@ -246,11 +254,12 @@ export default function MailingListSettings({
         </DialogHeader>
 
         <Tabs defaultValue="content" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="content">Типы контента</TabsTrigger>
+            <TabsTrigger value="sender">Отправка</TabsTrigger>
             <TabsTrigger value="ai">AI-профиль</TabsTrigger>
             <TabsTrigger value="schedule">Расписание</TabsTrigger>
-            <TabsTrigger value="utm">UTM / Ограничения</TabsTrigger>
+            <TabsTrigger value="utm">UTM</TabsTrigger>
           </TabsList>
 
           <TabsContent value="content" className="space-y-4">
@@ -323,6 +332,59 @@ export default function MailingListSettings({
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="sender" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Настройки отправки</CardTitle>
+                <CardDescription>
+                  Укажите данные отправителя для массовых рассылок
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sender-name">Имя отправителя</Label>
+                  <Input
+                    id="sender-name"
+                    value={senderName}
+                    onChange={(e) => setSenderName(e.target.value)}
+                    placeholder="HR Team"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Имя, которое увидят получатели в поле "От"
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="sender-email">Email отправителя</Label>
+                  <Input
+                    id="sender-email"
+                    type="email"
+                    value={senderEmail}
+                    onChange={(e) => setSenderEmail(e.target.value)}
+                    placeholder="events@example.com"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Email должен быть подтверждён в UniSender
+                  </p>
+                </div>
+
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                  <div className="flex items-start gap-2">
+                    <Icon name="Info" className="w-4 h-4 mt-0.5 text-blue-600" />
+                    <div className="text-sm text-blue-900">
+                      <div className="font-medium">Важно:</div>
+                      <ul className="list-disc list-inside mt-1 space-y-1 text-xs">
+                        <li>Email должен быть подтверждён в UniSender</li>
+                        <li>Используется только для массовых рассылок</li>
+                        <li>Для тестов используется шаблон UniSender</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

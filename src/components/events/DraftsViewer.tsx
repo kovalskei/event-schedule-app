@@ -40,9 +40,20 @@ interface DraftsViewerProps {
   onOpenChange: (open: boolean) => void;
   eventListId: number | null;
   listName: string;
+  unisenderListId?: string;
+  senderEmail?: string;
+  senderName?: string;
 }
 
-export default function DraftsViewer({ open, onOpenChange, eventListId, listName }: DraftsViewerProps) {
+export default function DraftsViewer({ 
+  open, 
+  onOpenChange, 
+  eventListId, 
+  listName,
+  unisenderListId,
+  senderEmail,
+  senderName 
+}: DraftsViewerProps) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,6 +63,10 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
   const [testEmail, setTestEmail] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
   const [templateId, setTemplateId] = useState<string>('');
+  const [sendingCampaign, setSendingCampaign] = useState(false);
+  const [campaignId, setCampaignId] = useState<string>('');
+  const [campaignStats, setCampaignStats] = useState<any>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   useEffect(() => {
     if (open && eventListId) {
@@ -194,6 +209,92 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
     }
   };
 
+  const handleSendCampaign = async () => {
+    if (!selectedDraft || !unisenderListId || !senderEmail || !senderName) {
+      toast.error('Укажите все данные для рассылки');
+      return;
+    }
+
+    setSendingCampaign(true);
+    try {
+      // 1. Создаём письмо
+      const messageResponse = await fetch(UNISENDER_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_message',
+          sender_name: senderName,
+          sender_email: senderEmail,
+          subject: selectedDraft.subject,
+          html: selectedDraft.html_content,
+          list_id: unisenderListId,
+        }),
+      });
+
+      const messageData = await messageResponse.json();
+
+      if (messageData.error) {
+        throw new Error(messageData.error);
+      }
+
+      // 2. Создаём кампанию
+      const campaignResponse = await fetch(UNISENDER_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_campaign',
+          message_id: messageData.message_id,
+          list_id: unisenderListId,
+        }),
+      });
+
+      const campaignData = await campaignResponse.json();
+
+      if (campaignData.error) {
+        throw new Error(campaignData.error);
+      }
+
+      setCampaignId(campaignData.campaign_id);
+      toast.success(`Рассылка создана! ID: ${campaignData.campaign_id}`);
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка создания рассылки');
+    } finally {
+      setSendingCampaign(false);
+    }
+  };
+
+  const handleLoadStats = async () => {
+    if (!campaignId) {
+      toast.error('Сначала отправьте рассылку');
+      return;
+    }
+
+    setLoadingStats(true);
+    try {
+      const response = await fetch(UNISENDER_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'get_campaign_stats',
+          campaign_id: campaignId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setCampaignStats(data.stats);
+      toast.success('Статистика загружена');
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка загрузки статистики');
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
@@ -308,51 +409,129 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
                     </div>
                     
                     {/* UniSender интеграция */}
-                    <div className="space-y-2">
-                      <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={handleCreateTemplate}
-                          disabled={creatingTemplate}
-                        >
-                          {creatingTemplate ? (
-                            <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
-                          ) : (
-                            <Icon name="Upload" className="w-4 h-4 mr-2" />
-                          )}
-                          Создать шаблон в UniSender
-                        </Button>
-                        {templateId && (
-                          <span className="text-xs text-green-600 flex items-center">
-                            <Icon name="Check" className="w-3 h-3 mr-1" />
-                            ID: {templateId}
-                          </span>
-                        )}
-                      </div>
-                      
-                      {templateId && (
+                    <div className="space-y-3">
+                      {/* Шаблон и тест */}
+                      <div className="space-y-2">
                         <div className="flex gap-2">
-                          <Input
-                            type="email"
-                            placeholder="Email для теста"
-                            value={testEmail}
-                            onChange={(e) => setTestEmail(e.target.value)}
-                            className="h-8 text-sm"
-                          />
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={handleSendTest}
-                            disabled={sendingTest || !testEmail}
+                            onClick={handleCreateTemplate}
+                            disabled={creatingTemplate}
                           >
-                            {sendingTest ? (
+                            {creatingTemplate ? (
                               <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
                             ) : (
-                              <Icon name="Send" className="w-4 h-4 mr-2" />
+                              <Icon name="Upload" className="w-4 h-4 mr-2" />
                             )}
-                            Отправить тест
+                            Шаблон
                           </Button>
+                          {templateId && (
+                            <span className="text-xs text-green-600 flex items-center">
+                              <Icon name="Check" className="w-3 h-3 mr-1" />
+                              ID: {templateId}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {templateId && (
+                          <div className="flex gap-2">
+                            <Input
+                              type="email"
+                              placeholder="Email для теста"
+                              value={testEmail}
+                              onChange={(e) => setTestEmail(e.target.value)}
+                              className="h-8 text-sm"
+                            />
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={handleSendTest}
+                              disabled={sendingTest || !testEmail}
+                            >
+                              {sendingTest ? (
+                                <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
+                              ) : (
+                                <Icon name="Send" className="w-4 h-4 mr-2" />
+                              )}
+                              Тест
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Массовая рассылка */}
+                      {unisenderListId && senderEmail && (
+                        <div className="pt-3 border-t space-y-2">
+                          <Button 
+                            size="sm"
+                            onClick={handleSendCampaign}
+                            disabled={sendingCampaign}
+                            className="w-full"
+                          >
+                            {sendingCampaign ? (
+                              <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Icon name="Mail" className="w-4 h-4 mr-2" />
+                            )}
+                            Отправить на весь список
+                          </Button>
+                          
+                          {campaignId && (
+                            <>
+                              <div className="text-xs text-green-600 flex items-center justify-between">
+                                <span className="flex items-center">
+                                  <Icon name="Check" className="w-3 h-3 mr-1" />
+                                  Рассылка ID: {campaignId}
+                                </span>
+                                <Button 
+                                  size="sm" 
+                                  variant="ghost"
+                                  onClick={handleLoadStats}
+                                  disabled={loadingStats}
+                                  className="h-6 text-xs"
+                                >
+                                  {loadingStats ? (
+                                    <Icon name="Loader2" className="w-3 h-3 mr-1 animate-spin" />
+                                  ) : (
+                                    <Icon name="BarChart3" className="w-3 h-3 mr-1" />
+                                  )}
+                                  Статистика
+                                </Button>
+                              </div>
+                              
+                              {campaignStats && (
+                                <div className="bg-blue-50 rounded p-3 space-y-1 text-xs">
+                                  <div className="flex justify-between">
+                                    <span>Отправлено:</span>
+                                    <span className="font-semibold">{campaignStats.sent || 0}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Доставлено:</span>
+                                    <span className="font-semibold">{campaignStats.delivered || 0}</span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Открытий:</span>
+                                    <span className="font-semibold text-green-600">
+                                      {campaignStats.opened || 0} ({((campaignStats.opened / campaignStats.sent) * 100).toFixed(1)}%)
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Кликов:</span>
+                                    <span className="font-semibold text-blue-600">
+                                      {campaignStats.clicked || 0} ({((campaignStats.clicked / campaignStats.sent) * 100).toFixed(1)}%)
+                                    </span>
+                                  </div>
+                                  {campaignStats.unsubscribed > 0 && (
+                                    <div className="flex justify-between">
+                                      <span>Отписались:</span>
+                                      <span className="font-semibold text-red-600">{campaignStats.unsubscribed}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

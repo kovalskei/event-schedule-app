@@ -34,6 +34,8 @@ interface MailingList {
   utm_content: string | null;
   created_at: string;
   drafts_count: number;
+  sender_email?: string;
+  sender_name?: string;
 }
 
 interface ContentType {
@@ -223,6 +225,9 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
         onOpenChange={setDraftsOpen}
         eventListId={selectedList?.id || null}
         listName={selectedList?.unisender_list_name || ''}
+        unisenderListId={selectedList?.unisender_list_id}
+        senderEmail={selectedList?.sender_email}
+        senderName={selectedList?.sender_name}
       />
 
       <ContentPlanDialog

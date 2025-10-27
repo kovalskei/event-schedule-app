@@ -394,6 +394,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 schedule_window_start = body_data.get('schedule_window_start', '10:00')
                 schedule_window_end = body_data.get('schedule_window_end', '19:00')
                 test_required = body_data.get('test_required', True)
+                sender_email = body_data.get('sender_email')
+                sender_name = body_data.get('sender_name', 'HR Team')
                 
                 if not list_id:
                     return {
@@ -415,12 +417,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         schedule_datetime = %s,
                         schedule_window_start = %s,
                         schedule_window_end = %s,
-                        test_required = %s
+                        test_required = %s,
+                        sender_email = %s,
+                        sender_name = %s
                     WHERE id = %s
                 ''', (content_type_ids, content_type_order, ai_provider, ai_model, 
                       ai_assistant_id, demo_mode, schedule_type, schedule_rrule, 
                       schedule_datetime, schedule_window_start, schedule_window_end, 
-                      test_required, list_id))
+                      test_required, sender_email, sender_name, list_id))
                 
                 conn.commit()
                 

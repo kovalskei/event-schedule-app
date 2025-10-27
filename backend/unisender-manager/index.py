@@ -6,9 +6,9 @@ import urllib.parse
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Управляет UniSender - создаёт шаблоны, отправляет тесты, получает списки рассылки
-    Args: event - dict с httpMethod, body (action: create_template|send_test|get_lists, subject, html, test_email)
-    Returns: HTTP response с ID шаблона, статусом или списками рассылки
+    Business: Полное управление UniSender - шаблоны, письма, рассылки, аналитика
+    Args: event - dict с httpMethod, body (action: create_template|send_test|create_message|create_campaign|get_lists|get_campaigns|get_campaign_stats)
+    Returns: HTTP response с ID, статусом, списками или статистикой
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -164,11 +164,165 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     })
                 }
         
+        elif action == 'create_campaign':
+            message_id = body_data.get('message_id', '')
+            list_id = body_data.get('list_id', '')
+            
+            if not message_id or not list_id:
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'message_id and list_id required'})
+                }
+            
+            params = {
+                'format': 'json',
+                'api_key': api_key,
+                'message_id': message_id
+            }
+            
+            data = urllib.parse.urlencode(params).encode('utf-8')
+            req = urllib.request.Request('https://api.unisender.com/ru/api/createCampaign', data=data)
+            
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                
+                if 'result' in result:
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({
+                            'campaign_id': result['result']['campaign_id'],
+                            'message': 'Campaign created successfully'
+                        })
+                    }
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': result.get('error', 'Unknown error')})
+                    }
+        
+        elif action == 'create_message':
+            sender_name = body_data.get('sender_name', '')
+            sender_email = body_data.get('sender_email', '')
+            subject = body_data.get('subject', '')
+            html = body_data.get('html', '')
+            list_id = body_data.get('list_id', '')
+            
+            if not all([sender_name, sender_email, subject, html, list_id]):
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'sender_name, sender_email, subject, html, and list_id required'})
+                }
+            
+            params = {
+                'format': 'json',
+                'api_key': api_key,
+                'sender_name': sender_name,
+                'sender_email': sender_email,
+                'subject': subject,
+                'body': html,
+                'list_id': list_id,
+                'lang': 'ru'
+            }
+            
+            data = urllib.parse.urlencode(params).encode('utf-8')
+            req = urllib.request.Request('https://api.unisender.com/ru/api/createEmailMessage', data=data)
+            
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                
+                if 'result' in result:
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({
+                            'message_id': result['result']['message_id'],
+                            'message': 'Email message created successfully'
+                        })
+                    }
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': result.get('error', 'Unknown error')})
+                    }
+        
+        elif action == 'get_campaigns':
+            from_date = body_data.get('from', '')
+            to_date = body_data.get('to', '')
+            
+            params = {
+                'format': 'json',
+                'api_key': api_key
+            }
+            
+            if from_date:
+                params['from'] = from_date
+            if to_date:
+                params['to'] = to_date
+            
+            data = urllib.parse.urlencode(params).encode('utf-8')
+            req = urllib.request.Request('https://api.unisender.com/ru/api/getCampaigns', data=data)
+            
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                
+                if 'result' in result:
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'campaigns': result['result']})
+                    }
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': result.get('error', 'Unknown error')})
+                    }
+        
+        elif action == 'get_campaign_stats':
+            campaign_id = body_data.get('campaign_id', '')
+            
+            if not campaign_id:
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'campaign_id required'})
+                }
+            
+            params = {
+                'format': 'json',
+                'api_key': api_key,
+                'campaign_id': campaign_id
+            }
+            
+            data = urllib.parse.urlencode(params).encode('utf-8')
+            req = urllib.request.Request('https://api.unisender.com/ru/api/getCampaignCommonStats', data=data)
+            
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode('utf-8'))
+                
+                if 'result' in result:
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'stats': result['result']})
+                    }
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': result.get('error', 'Unknown error')})
+                    }
+        
         else:
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'Invalid action. Use: create_template or send_test'})
+                'body': json.dumps({'error': 'Invalid action. Use: create_template, send_test, create_message, create_campaign, get_campaigns, get_campaign_stats'})
             }
     
     return {
