@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
+const UNISENDER_MANAGER_URL = 'https://functions.poehali.dev/c6001b4a-b44b-4358-8b02-a4e85f7da1b8';
 
 interface Draft {
   id: number;
@@ -46,6 +48,10 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
+  const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [templateId, setTemplateId] = useState<string>('');
 
   useEffect(() => {
     if (open && eventListId) {
@@ -122,6 +128,69 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
       toast.error(error.message || 'Ошибка удаления черновиков');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    if (!selectedDraft) return;
+
+    setCreatingTemplate(true);
+    try {
+      const response = await fetch(UNISENDER_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_template',
+          subject: selectedDraft.subject,
+          html: selectedDraft.html_content,
+          template_name: `${listName} - ${selectedDraft.subject}`,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setTemplateId(data.template_id);
+      toast.success(`Шаблон создан в UniSender (ID: ${data.template_id})`);
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка создания шаблона в UniSender');
+    } finally {
+      setCreatingTemplate(false);
+    }
+  };
+
+  const handleSendTest = async () => {
+    if (!templateId || !testEmail) {
+      toast.error('Сначала создайте шаблон и укажите email');
+      return;
+    }
+
+    setSendingTest(true);
+    try {
+      const response = await fetch(UNISENDER_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'send_test',
+          template_id: templateId,
+          test_email: testEmail,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message);
+      }
+
+      toast.success(`Тестовое письмо отправлено на ${testEmail}`);
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка отправки теста');
+    } finally {
+      setSendingTest(false);
     }
   };
 
@@ -233,19 +302,59 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
                     />
                   </div>
 
-                  <div className="p-4 border-t bg-gray-50 flex items-center justify-between flex-shrink-0">
+                  <div className="p-4 border-t bg-gray-50 space-y-3 flex-shrink-0">
                     <div className="text-sm text-gray-500">
                       Создано: {new Date(selectedDraft.created_at).toLocaleString('ru-RU')}
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
-                        <Icon name="Send" className="w-4 h-4 mr-2" />
-                        Тест
-                      </Button>
-                      <Button size="sm">
-                        <Icon name="Check" className="w-4 h-4 mr-2" />
-                        Утвердить
-                      </Button>
+                    
+                    {/* UniSender интеграция */}
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={handleCreateTemplate}
+                          disabled={creatingTemplate}
+                        >
+                          {creatingTemplate ? (
+                            <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Icon name="Upload" className="w-4 h-4 mr-2" />
+                          )}
+                          Создать шаблон в UniSender
+                        </Button>
+                        {templateId && (
+                          <span className="text-xs text-green-600 flex items-center">
+                            <Icon name="Check" className="w-3 h-3 mr-1" />
+                            ID: {templateId}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {templateId && (
+                        <div className="flex gap-2">
+                          <Input
+                            type="email"
+                            placeholder="Email для теста"
+                            value={testEmail}
+                            onChange={(e) => setTestEmail(e.target.value)}
+                            className="h-8 text-sm"
+                          />
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={handleSendTest}
+                            disabled={sendingTest || !testEmail}
+                          >
+                            {sendingTest ? (
+                              <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Icon name="Send" className="w-4 h-4 mr-2" />
+                            )}
+                            Отправить тест
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>
