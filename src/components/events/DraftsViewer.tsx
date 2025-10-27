@@ -10,6 +10,19 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+
+const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 
 interface Draft {
   id: number;
@@ -31,6 +44,8 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
 
   useEffect(() => {
     if (open && eventListId) {
@@ -44,7 +59,7 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
     setLoading(true);
     try {
       const response = await fetch(
-        `https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750?action=get_drafts&event_list_id=${eventListId}`
+        `${EVENTS_MANAGER_URL}?action=get_drafts&event_list_id=${eventListId}`
       );
       const data = await response.json();
       setDrafts(data.drafts || []);
@@ -53,8 +68,60 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
       }
     } catch (error) {
       console.error('Failed to load drafts:', error);
+      toast.error('Ошибка загрузки черновиков');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteDraft = async (draftId: number) => {
+    setDeleting(true);
+    try {
+      const response = await fetch(
+        `${EVENTS_MANAGER_URL}?action=delete_draft&draft_id=${draftId}`,
+        { method: 'DELETE' }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка удаления');
+      }
+
+      toast.success('Черновик удалён');
+      setSelectedDraft(null);
+      loadDrafts();
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка удаления черновика');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!eventListId) return;
+
+    setDeleting(true);
+    try {
+      const response = await fetch(
+        `${EVENTS_MANAGER_URL}?action=delete_all_drafts&list_id=${eventListId}`,
+        { method: 'DELETE' }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка удаления');
+      }
+
+      toast.success(`Удалено черновиков: ${data.count || 0}`);
+      setSelectedDraft(null);
+      setDeleteAllOpen(false);
+      loadDrafts();
+    } catch (error: any) {
+      toast.error(error.message || 'Ошибка удаления черновиков');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -62,10 +129,25 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Черновики писем — {listName}</DialogTitle>
-          <DialogDescription>
-            Просмотр сгенерированных писем для списка рассылки
-          </DialogDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle>Черновики писем — {listName}</DialogTitle>
+              <DialogDescription>
+                Просмотр сгенерированных писем для списка рассылки
+              </DialogDescription>
+            </div>
+            {drafts.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setDeleteAllOpen(true)}
+                disabled={deleting}
+              >
+                <Icon name="Trash2" className="w-4 h-4 mr-2" />
+                Удалить все
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         {loading ? (
@@ -126,10 +208,21 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
                         <div className="font-medium text-sm text-gray-600">Тема:</div>
                         <div className="font-semibold">{selectedDraft.subject}</div>
                       </div>
-                      <Button size="sm" variant="outline">
-                        <Icon name="Edit" className="w-4 h-4 mr-2" />
-                        Редактировать
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline">
+                          <Icon name="Edit" className="w-4 h-4 mr-2" />
+                          Редактировать
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteDraft(selectedDraft.id)}
+                          disabled={deleting}
+                        >
+                          <Icon name="Trash2" className="w-4 h-4 mr-2" />
+                          Удалить
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
@@ -164,6 +257,28 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
             </div>
           </div>
         )}
+
+        <AlertDialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Удалить все черновики?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Будут удалены все {drafts.length} черновиков для этого списка рассылки.
+                Это действие необратимо.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Отмена</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAll}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                {deleting ? 'Удаление...' : 'Удалить все'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );

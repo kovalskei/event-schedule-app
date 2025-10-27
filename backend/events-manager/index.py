@@ -1318,6 +1318,56 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'error': 'Invalid action'})
                 }
         
+        elif method == 'DELETE':
+            params = event.get('queryStringParameters') or {}
+            action = params.get('action', '')
+            
+            if action == 'delete_draft':
+                draft_id = params.get('draft_id')
+                
+                if not draft_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'draft_id required'})
+                    }
+                
+                cur.execute('DELETE FROM generated_emails WHERE id = %s', (draft_id,))
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Draft deleted successfully'})
+                }
+            
+            elif action == 'delete_all_drafts':
+                list_id = params.get('list_id')
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                cur.execute('DELETE FROM generated_emails WHERE event_list_id = %s AND status = %s', (list_id, 'draft'))
+                deleted_count = cur.rowcount
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': f'Deleted {deleted_count} drafts', 'count': deleted_count})
+                }
+            
+            else:
+                return {
+                    'statusCode': 400,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'Invalid action'})
+                }
+        
         else:
             return {
                 'statusCode': 405,
