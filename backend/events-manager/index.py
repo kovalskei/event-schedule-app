@@ -831,7 +831,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             data=json.dumps(request_payload).encode('utf-8'),
                             headers={
                                 'Content-Type': 'application/json',
-                                'Authorization': f'Bearer {openai_api_key}'
+                                'Authorization': f'Bearer {api_key}'
                             }
                         )
                         
