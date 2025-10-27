@@ -486,12 +486,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             ai_response = requests.post(
                                 'https://functions.poehali.dev/8d7c9e05-6ad1-43e3-bc2a-dd9e68ceeb44',
                                 json={
-                                    'program_topics': program_topics,
-                                    'pain_points': pain_points,
-                                    'html_template': html_template,
-                                    'subject_template': subject_template,
-                                    'instructions': instructions,
-                                    'tone': mailing_list.get('default_tone', 'professional')
+                                    'program_text': '\n'.join(program_topics),
+                                    'pain_points_text': '\n'.join(pain_points),
+                                    'tone': mailing_list.get('default_tone', 'professional'),
+                                    'demo_mode': True
                                 },
                                 timeout=30
                             )
@@ -505,12 +503,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 print(f'[AI] Generated subject: {final_subject[:50]}...')
                             else:
                                 print(f'[AI] Error response: {ai_response.text[:200]}')
-                                final_html = html_template
-                                final_subject = subject_template
+                                final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
+                                final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
+                                final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
+                                final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
                         except Exception as e:
                             print(f'[AI] Exception: {str(e)}')
-                            final_html = html_template
-                            final_subject = subject_template
+                            final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
+                            final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
+                            final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
+                            final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
                     
                     cur.execute('''
                         INSERT INTO generated_emails (
