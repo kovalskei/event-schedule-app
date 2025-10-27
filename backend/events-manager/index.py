@@ -409,7 +409,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'Mailing list not found'})
                     }
                 
-                content_type_ids = mailing_list.get('content_type_ids', [])
+                content_type_ids = mailing_list['content_type_ids'] if mailing_list['content_type_ids'] else []
                 
                 if not content_type_ids:
                     return {
