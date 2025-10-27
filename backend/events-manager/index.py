@@ -83,9 +83,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    SELECT * FROM event_mailing_lists 
-                    WHERE event_id = %s 
-                    ORDER BY created_at DESC
+                    SELECT 
+                        eml.*,
+                        COUNT(ge.id) as drafts_count
+                    FROM event_mailing_lists eml
+                    LEFT JOIN generated_emails ge ON ge.event_list_id = eml.id AND ge.status = 'draft'
+                    WHERE eml.event_id = %s 
+                    GROUP BY eml.id
+                    ORDER BY eml.created_at DESC
                 ''', (event_id,))
                 lists = cur.fetchall()
                 
@@ -124,6 +129,36 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'email_templates': [dict(t) for t in templates],
                         'content_plan': [dict(cp) for cp in content_plan]
                     }, default=str)
+                }
+            
+            elif action == 'get_drafts':
+                event_list_id = params.get('event_list_id', '')
+                
+                if not event_list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_list_id required'})
+                    }
+                
+                cur.execute('''
+                    SELECT 
+                        ge.*,
+                        ct.name as content_type_name,
+                        ct.description as content_type_description
+                    FROM generated_emails ge
+                    LEFT JOIN campaigns c ON c.id = ge.campaign_id
+                    LEFT JOIN content_types ct ON ct.id = c.mailing_list_id
+                    WHERE ge.event_list_id = %s
+                    ORDER BY ge.created_at DESC
+                ''', (event_list_id,))
+                
+                drafts = cur.fetchall()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'drafts': [dict(d) for d in drafts]}, default=str)
                 }
             
             else:

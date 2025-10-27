@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import MailingListSettings from './MailingListSettings';
+import DraftsViewer from './DraftsViewer';
 
 interface Event {
   id: number;
@@ -30,6 +31,7 @@ interface MailingList {
   utm_term: string | null;
   utm_content: string | null;
   created_at: string;
+  drafts_count: number;
 }
 
 interface ContentType {
@@ -50,11 +52,17 @@ interface EventDetailsProps {
 
 export default function EventDetails({ event, mailingLists, contentTypes, onBack, onLinkList, onEditSettings, onUpdate }: EventDetailsProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [draftsOpen, setDraftsOpen] = useState(false);
   const [selectedList, setSelectedList] = useState<MailingList | null>(null);
 
   const handleOpenSettings = (list: MailingList) => {
     setSelectedList(list);
     setSettingsOpen(true);
+  };
+
+  const handleOpenDrafts = (list: MailingList) => {
+    setSelectedList(list);
+    setDraftsOpen(true);
   };
 
   return (
@@ -131,7 +139,23 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
                 <div key={list.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h4 className="font-medium">{list.unisender_list_name}</h4>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium">{list.unisender_list_name}</h4>
+                        {list.drafts_count > 0 && (
+                          <Badge 
+                            variant="secondary" 
+                            className="cursor-pointer hover:bg-secondary/80"
+                            onClick={() => handleOpenDrafts(list)}
+                          >
+                            <Icon name="FileText" className="w-3 h-3 mr-1" />
+                            {list.drafts_count} {
+                              list.drafts_count === 1 ? 'черновик' : 
+                              list.drafts_count < 5 ? 'черновика' : 
+                              'черновиков'
+                            }
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-sm text-gray-500">ID: {list.unisender_list_id}</p>
                     </div>
                     <Button 
@@ -174,6 +198,13 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
           setSettingsOpen(false);
           onUpdate();
         }}
+      />
+
+      <DraftsViewer
+        open={draftsOpen}
+        onOpenChange={setDraftsOpen}
+        eventListId={selectedList?.id || null}
+        listName={selectedList?.unisender_list_name || ''}
       />
     </div>
   );
