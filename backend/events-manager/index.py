@@ -428,48 +428,61 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 pain_points_text = ''
                 
                 import requests
+                import urllib.request
+                import urllib.error
+                import csv
+                from io import StringIO
+                
+                def read_google_doc(url: str) -> str:
+                    """Читает Google Docs или Sheets напрямую"""
+                    try:
+                        doc_id = ''
+                        doc_type = 'docs'
+                        
+                        if '/document/d/' in url:
+                            doc_id = url.split('/document/d/')[1].split('/')[0]
+                            doc_type = 'docs'
+                        elif '/spreadsheets/d/' in url:
+                            doc_id = url.split('/spreadsheets/d/')[1].split('/')[0]
+                            doc_type = 'sheets'
+                        
+                        if not doc_id:
+                            return ''
+                        
+                        if doc_type == 'sheets':
+                            export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+                            req = urllib.request.Request(export_url)
+                            req.add_header('User-Agent', 'Mozilla/5.0')
+                            
+                            with urllib.request.urlopen(req, timeout=10) as response:
+                                csv_content = response.read().decode('utf-8')
+                                csv_reader = csv.reader(StringIO(csv_content))
+                                text_lines = []
+                                
+                                for row in csv_reader:
+                                    text_lines.append('\t'.join(row))
+                                
+                                return '\n'.join(text_lines)
+                        else:
+                            export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=txt'
+                            req = urllib.request.Request(export_url)
+                            req.add_header('User-Agent', 'Mozilla/5.0')
+                            
+                            with urllib.request.urlopen(req, timeout=10) as response:
+                                return response.read().decode('utf-8')
+                    except Exception as e:
+                        print(f'[ERROR] Failed to read Google doc: {str(e)}')
+                        return ''
                 
                 if program_doc_id:
-                    try:
-                        print(f'[DEBUG] Fetching program from: {program_doc_id}')
-                        prog_response = requests.get(
-                            'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                            params={'url': program_doc_id},
-                            timeout=10
-                        )
-                        print(f'[DEBUG] Program response status: {prog_response.status_code}')
-                        print(f'[DEBUG] Program response body: {prog_response.text[:500]}')
-                        
-                        if prog_response.ok:
-                            response_data = prog_response.json()
-                            program_text = response_data.get('content', response_data.get('text', ''))
-                            print(f'[DEBUG] Program type: {response_data.get("type", "unknown")}')
-                            print(f'[DEBUG] Program text length: {len(program_text)}')
-                        else:
-                            print(f'[ERROR] Program doc failed with status {prog_response.status_code}')
-                    except Exception as e:
-                        print(f'[ERROR] Failed to read program doc: {str(e)}')
+                    print(f'[DEBUG] Reading program from: {program_doc_id}')
+                    program_text = read_google_doc(program_doc_id)
+                    print(f'[DEBUG] Program text length: {len(program_text)}')
                 
                 if pain_doc_id:
-                    try:
-                        print(f'[DEBUG] Fetching pain points from: {pain_doc_id}')
-                        pain_response = requests.get(
-                            'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                            params={'url': pain_doc_id},
-                            timeout=10
-                        )
-                        print(f'[DEBUG] Pain response status: {pain_response.status_code}')
-                        print(f'[DEBUG] Pain response body: {pain_response.text[:500]}')
-                        
-                        if pain_response.ok:
-                            response_data = pain_response.json()
-                            pain_points_text = response_data.get('content', response_data.get('text', ''))
-                            print(f'[DEBUG] Pain type: {response_data.get("type", "unknown")}')
-                            print(f'[DEBUG] Pain text length: {len(pain_points_text)}')
-                        else:
-                            print(f'[ERROR] Pain doc failed with status {pain_response.status_code}')
-                    except Exception as e:
-                        print(f'[ERROR] Failed to read pain doc: {str(e)}')
+                    print(f'[DEBUG] Reading pain points from: {pain_doc_id}')
+                    pain_points_text = read_google_doc(pain_doc_id)
+                    print(f'[DEBUG] Pain text length: {len(pain_points_text)}')
                 
                 program_topics = [line.strip() for line in program_text.split('\n') if line.strip()]
                 pain_points = [line.strip() for line in pain_points_text.split('\n') if line.strip()]
