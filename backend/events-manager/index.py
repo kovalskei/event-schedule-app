@@ -587,6 +587,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'event_id and type_names required'})
                     }
                 
+                default_html_template = '''
+                <html>
+                <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h1>{subject}</h1>
+                    <div>{content}</div>
+                </body>
+                </html>
+                '''
+                
                 created_count = 0
                 for name in type_names:
                     if not name or not name.strip():
@@ -595,8 +604,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     cur.execute('''
                         INSERT INTO content_types (event_id, name, description)
                         VALUES (%s, %s, %s)
-                        ON CONFLICT DO NOTHING
+                        RETURNING id
                     ''', (event_id, name.strip(), f'Автоматически создан из контент-плана'))
+                    
+                    content_type_id = cur.fetchone()['id']
+                    
+                    cur.execute('''
+                        INSERT INTO email_templates (
+                            event_id, 
+                            content_type_id, 
+                            name, 
+                            html_template, 
+                            subject_template,
+                            instructions
+                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                    ''', (
+                        event_id, 
+                        content_type_id, 
+                        f'Базовый шаблон: {name}',
+                        default_html_template,
+                        '{subject}',
+                        f'Создай письмо в стиле "{name}". Используй информацию о программе мероприятия и болях целевой аудитории.'
+                    ))
+                    
                     created_count += 1
                 
                 conn.commit()
@@ -696,7 +726,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 openai_api_key = os.environ.get('OPENAI_API_KEY', '')
                 
-                print(f'[AI] Using provider={ai_provider}, model={ai_model}')
+                if not openai_api_key:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENAI_API_KEY not configured'})
+                    }
+                
+                print(f'[AI] Using provider={ai_provider}, model={ai_model}, key_length={len(openai_api_key)}')
                 
                 generated_count = 0
                 for row in rows:
@@ -793,8 +830,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             ))
                             generated_count += 1
                             
+                    except urllib.error.HTTPError as e:
+                        error_body = e.read().decode('utf-8') if hasattr(e, 'read') else str(e)
+                        print(f'[ERROR] OpenAI API HTTP Error for "{title}": {e.code} - {error_body}')
+                        continue
                     except Exception as e:
-                        print(f'[ERROR] AI generation failed for "{title}": {str(e)}')
+                        print(f'[ERROR] AI generation failed for "{title}": {type(e).__name__} - {str(e)}')
                         continue
                 
                 conn.commit()
