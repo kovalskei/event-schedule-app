@@ -431,27 +431,43 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 if program_doc_id:
                     try:
+                        print(f'[DEBUG] Fetching program from: {program_doc_id}')
                         prog_response = requests.get(
                             'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                            params={'url': program_doc_id}
+                            params={'url': program_doc_id},
+                            timeout=10
                         )
+                        print(f'[DEBUG] Program response status: {prog_response.status_code}')
+                        print(f'[DEBUG] Program response body: {prog_response.text[:500]}')
+                        
                         if prog_response.ok:
                             response_data = prog_response.json()
                             program_text = response_data.get('content', response_data.get('text', ''))
-                            print(f'[DEBUG] Program response: {response_data.get("type", "unknown")} type')
+                            print(f'[DEBUG] Program type: {response_data.get("type", "unknown")}')
+                            print(f'[DEBUG] Program text length: {len(program_text)}')
+                        else:
+                            print(f'[ERROR] Program doc failed with status {prog_response.status_code}')
                     except Exception as e:
                         print(f'[ERROR] Failed to read program doc: {str(e)}')
                 
                 if pain_doc_id:
                     try:
+                        print(f'[DEBUG] Fetching pain points from: {pain_doc_id}')
                         pain_response = requests.get(
                             'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                            params={'url': pain_doc_id}
+                            params={'url': pain_doc_id},
+                            timeout=10
                         )
+                        print(f'[DEBUG] Pain response status: {pain_response.status_code}')
+                        print(f'[DEBUG] Pain response body: {pain_response.text[:500]}')
+                        
                         if pain_response.ok:
                             response_data = pain_response.json()
                             pain_points_text = response_data.get('content', response_data.get('text', ''))
-                            print(f'[DEBUG] Pain response: {response_data.get("type", "unknown")} type')
+                            print(f'[DEBUG] Pain type: {response_data.get("type", "unknown")}')
+                            print(f'[DEBUG] Pain text length: {len(pain_points_text)}')
+                        else:
+                            print(f'[ERROR] Pain doc failed with status {pain_response.status_code}')
                     except Exception as e:
                         print(f'[ERROR] Failed to read pain doc: {str(e)}')
                 
