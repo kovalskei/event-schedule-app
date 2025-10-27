@@ -915,6 +915,190 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'generated_count': generated_count})
                 }
             
+            elif action == 'generate_single_email':
+                event_id = body_data.get('event_id')
+                event_list_id = body_data.get('event_list_id')
+                title = body_data.get('title', '')
+                content_type_name = body_data.get('content_type', '')
+                
+                if not event_id or not event_list_id or not title or not content_type_name:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id, event_list_id, title, content_type required'})
+                    }
+                
+                print(f'[SINGLE_EMAIL] Generating for title="{title}", type="{content_type_name}"')
+                
+                cur.execute('SELECT program_doc_id, pain_doc_id FROM events WHERE id = %s', (event_id,))
+                event_row = cur.fetchone()
+                
+                if not event_row:
+                    return {
+                        'statusCode': 404,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Event not found'})
+                    }
+                
+                program_doc_id = event_row['program_doc_id'] or ''
+                pain_doc_id = event_row['pain_doc_id'] or ''
+                
+                program_text = read_google_doc(program_doc_id) if program_doc_id else ''
+                pain_text = read_google_doc(pain_doc_id) if pain_doc_id else ''
+                
+                cur.execute('SELECT id FROM content_types WHERE event_id = %s AND name = %s', (event_id, content_type_name))
+                content_type_row = cur.fetchone()
+                
+                if not content_type_row:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'missing_content_type', 'message': f'Content type "{content_type_name}" not found'})
+                    }
+                
+                content_type_id = content_type_row['id']
+                
+                cur.execute('''
+                    SELECT html_template, subject_template, instructions
+                    FROM email_templates
+                    WHERE event_id = %s AND content_type_id = %s
+                    LIMIT 1
+                ''', (event_id, content_type_id))
+                
+                template_row = cur.fetchone()
+                if not template_row:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Template not found for this content type'})
+                    }
+                
+                instructions = template_row['instructions'] or ''
+                html_template = template_row['html_template'] or ''
+                
+                cur.execute('''
+                    SELECT ai_provider, ai_model, ai_assistant_id
+                    FROM event_mailing_lists
+                    WHERE id = %s
+                ''', (event_list_id,))
+                
+                ai_settings = cur.fetchone()
+                ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
+                
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY')
+                openai_key = os.environ.get('OPENAI_API_KEY')
+                
+                if openrouter_key:
+                    api_key = openrouter_key
+                    api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                elif openai_key:
+                    api_key = openai_key
+                    api_url = 'https://api.openai.com/v1/chat/completions'
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
+                    }
+                
+                prompt = f"""
+Тема письма: {title}
+Инструкции для генерации: {instructions}
+
+Программа мероприятия:
+{program_text[:3000]}
+
+Боли целевой аудитории:
+{pain_text[:2000]}
+
+Шаблон HTML:
+{html_template[:1000]}
+
+Создай письмо на основе этих данных. Верни JSON:
+{{
+  "subject": "Тема письма",
+  "html": "<html>...</html>"
+}}
+"""
+                
+                request_payload = {
+                    'model': ai_model,
+                    'messages': [
+                        {'role': 'system', 'content': 'Ты - эксперт по email маркетингу. Создаёшь продающие письма.'},
+                        {'role': 'user', 'content': prompt}
+                    ],
+                    'temperature': 0.8,
+                    'max_tokens': 4000
+                }
+                
+                try:
+                    req = urllib.request.Request(
+                        api_url,
+                        data=json.dumps(request_payload).encode('utf-8'),
+                        headers={
+                            'Content-Type': 'application/json',
+                            'Authorization': f'Bearer {api_key}'
+                        }
+                    )
+                    
+                    with urllib.request.urlopen(req, timeout=60) as response:
+                        result = json.loads(response.read().decode('utf-8'))
+                        content = result['choices'][0]['message']['content']
+                        
+                        content = content.strip()
+                        if content.startswith('```json'):
+                            content = content[7:]
+                        if content.startswith('```'):
+                            content = content[3:]
+                        if content.endswith('```'):
+                            content = content[:-3]
+                        content = content.strip()
+                        
+                        try:
+                            email_data = json.loads(content)
+                        except json.JSONDecodeError as json_err:
+                            import re
+                            fixed_content = re.sub(r'\\(?![ntr"\\])', '', content)
+                            email_data = json.loads(fixed_content)
+                        
+                        final_subject = email_data.get('subject', title)
+                        final_html = email_data.get('html', '')
+                        
+                        cur.execute('''
+                            INSERT INTO generated_emails (
+                                event_list_id,
+                                content_type_id,
+                                subject,
+                                html_content,
+                                status
+                            ) VALUES (%s, %s, %s, %s, %s)
+                            RETURNING id
+                        ''', (
+                            event_list_id,
+                            content_type_id,
+                            final_subject,
+                            final_html,
+                            'draft'
+                        ))
+                        
+                        email_id = cur.fetchone()['id']
+                        conn.commit()
+                        
+                        return {
+                            'statusCode': 200,
+                            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                            'body': json.dumps({'success': True, 'email_id': email_id, 'subject': final_subject})
+                        }
+                
+                except Exception as e:
+                    conn.rollback()
+                    print(f'[ERROR] Single email generation failed: {type(e).__name__} - {str(e)[:500]}')
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': f'Generation failed: {str(e)[:200]}'})
+                    }
+            
             else:
                 return {
                     'statusCode': 400,

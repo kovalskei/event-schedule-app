@@ -128,54 +128,90 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
     setLoading(true);
     setGeneratingProgress({ current: 0, total: preview.length, status: 'Начинаем генерацию...' });
     
+    let successCount = 0;
+    let errorCount = 0;
+    
     try {
-      const docId = extractDocId(contentPlanUrl);
-      const response = await fetch('https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'generate_from_content_plan',
-          event_id: event.id,
-          event_list_id: parseInt(selectedListId),
-          content_plan_doc_id: docId
-        })
-      });
+      // Генерируем письма последовательно
+      for (let i = 0; i < preview.length; i++) {
+        const item = preview[i];
+        
+        setGeneratingProgress({ 
+          current: i, 
+          total: preview.length, 
+          status: `Генерируем: ${item.title}` 
+        });
 
-      const data = await response.json();
-      
-      if (!response.ok) {
-        if (data.error === 'missing_content_types' && data.missing_types && data.missing_types.length > 0) {
-          const missingList = data.missing_types.join(', ');
-          toast(
-            <div className="space-y-3">
-              <div>
-                <div className="font-medium mb-1">Отсутствуют типы контента</div>
-                <div className="text-sm text-gray-600">Не найдены: {missingList}</div>
-              </div>
-              <Button 
-                size="sm" 
-                onClick={() => {
-                  toast.dismiss();
-                  handleCreateMissingTypes(data.missing_types);
-                }}
-                className="w-full"
-              >
-                <Icon name="Plus" className="w-3 h-3 mr-1" />
-                Создать и продолжить генерацию
-              </Button>
-            </div>,
-            { duration: 10000 }
-          );
-          setLoading(false);
-          return;
+        try {
+          const response = await fetch('https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'generate_single_email',
+              event_id: event.id,
+              event_list_id: parseInt(selectedListId),
+              title: item.title,
+              content_type: item.content_type
+            })
+          });
+
+          const data = await response.json();
+          
+          if (!response.ok) {
+            if (data.error === 'missing_content_type') {
+              // Пробуем создать тип контента автоматически
+              await handleCreateMissingTypes([item.content_type]);
+              // Повторяем попытку генерации
+              const retryResponse = await fetch('https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'generate_single_email',
+                  event_id: event.id,
+                  event_list_id: parseInt(selectedListId),
+                  title: item.title,
+                  content_type: item.content_type
+                })
+              });
+              
+              if (retryResponse.ok) {
+                successCount++;
+              } else {
+                errorCount++;
+                console.error(`Failed to generate after retry: ${item.title}`);
+              }
+            } else {
+              errorCount++;
+              console.error(`Failed to generate: ${item.title}`, data);
+            }
+          } else {
+            successCount++;
+          }
+        } catch (itemError) {
+          errorCount++;
+          console.error(`Error generating ${item.title}:`, itemError);
         }
-        throw new Error(data.message || data.error || 'Ошибка генерации писем');
+        
+        // Обновляем прогресс
+        setGeneratingProgress({ 
+          current: i + 1, 
+          total: preview.length, 
+          status: `Завершено: ${i + 1} из ${preview.length}` 
+        });
       }
 
-      setGeneratingProgress({ current: data.generated_count || 0, total: preview.length, status: 'Завершено!' });
+      setGeneratingProgress({ 
+        current: preview.length, 
+        total: preview.length, 
+        status: 'Генерация завершена!' 
+      });
       
       setTimeout(() => {
-        toast.success(`Сгенерировано ${data.generated_count} писем!`);
+        if (errorCount > 0) {
+          toast.success(`Сгенерировано ${successCount} из ${preview.length} писем. Ошибок: ${errorCount}`);
+        } else {
+          toast.success(`Успешно сгенерировано ${successCount} писем!`);
+        }
         onUpdate();
         onOpenChange(false);
         setContentPlanUrl('');
