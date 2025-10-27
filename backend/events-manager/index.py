@@ -727,16 +727,25 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 ai_assistant_id = ai_settings['ai_assistant_id'] if ai_settings else ''
                 
                 # Используем OpenRouter для обхода региональных ограничений
-                api_key = os.environ.get('OPENROUTER_API_KEY') or os.environ.get('OPENAI_API_KEY', '')
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY')
+                openai_key = os.environ.get('OPENAI_API_KEY')
                 
-                if not api_key:
+                if openrouter_key:
+                    api_key = openrouter_key
+                    api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                    provider = 'openrouter'
+                elif openai_key:
+                    api_key = openai_key
+                    api_url = 'https://api.openai.com/v1/chat/completions'
+                    provider = 'openai'
+                else:
                     return {
                         'statusCode': 500,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                         'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
                     }
                 
-                print(f'[AI] Using provider={ai_provider}, model={ai_model}, key_length={len(api_key)}')
+                print(f'[AI] Using provider={provider}, model={ai_model}, api_url={api_url}')
                 
                 generated_count = 0
                 for row in rows:
@@ -827,7 +836,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         print(f'[AI] Request payload: model={ai_model}, temp=0.8, max_tokens=4000')
                         
                         req = urllib.request.Request(
-                            'https://api.openai.com/v1/chat/completions',
+                            api_url,
                             data=json.dumps(request_payload).encode('utf-8'),
                             headers={
                                 'Content-Type': 'application/json',
