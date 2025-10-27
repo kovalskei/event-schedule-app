@@ -617,6 +617,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 content_type_map = {ct['name']: ct['id'] for ct in content_types_list}
                 
                 rows = []
+                missing_types = set()
+                
                 for line in content_plan_text.split('\n'):
                     line = line.strip()
                     if not line or line.lower().startswith('заголовок'):
@@ -626,11 +628,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     if len(parts) >= 2:
                         title = parts[0].strip()
                         content_type_name = parts[1].strip()
-                        if title and content_type_name and content_type_name in content_type_map:
-                            rows.append({
-                                'title': title,
-                                'content_type_id': content_type_map[content_type_name]
-                            })
+                        
+                        if title and content_type_name:
+                            if content_type_name in content_type_map:
+                                rows.append({
+                                    'title': title,
+                                    'content_type_id': content_type_map[content_type_name]
+                                })
+                            else:
+                                missing_types.add(content_type_name)
+                
+                if missing_types:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({
+                            'error': 'missing_content_types',
+                            'message': f'В настройках не найдены типы контента: {", ".join(missing_types)}',
+                            'missing_types': list(missing_types),
+                            'available_types': list(content_type_map.keys())
+                        })
+                    }
                 
                 print(f'[CONTENT_PLAN] Found {len(rows)} valid rows')
                 

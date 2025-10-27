@@ -109,7 +109,14 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || 'Ошибка генерации писем');
+        if (data.error === 'missing_content_types') {
+          const missingList = data.missing_types?.join(', ') || '';
+          toast.error(`Отсутствуют типы контента: ${missingList}. Добавьте их в настройках мероприятия.`, {
+            duration: 8000
+          });
+          return;
+        }
+        throw new Error(data.message || data.error || 'Ошибка генерации писем');
       }
 
       toast.success(`Сгенерировано ${data.generated_count} писем!`);
