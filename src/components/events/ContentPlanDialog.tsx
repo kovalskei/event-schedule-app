@@ -129,6 +129,7 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
     setGeneratingProgress({ current: 0, total: preview.length, status: 'Начинаем генерацию...' });
     
     let successCount = 0;
+    let skippedCount = 0;
     let errorCount = 0;
     
     try {
@@ -174,8 +175,13 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
                 })
               });
               
+              const retryData = await retryResponse.json();
               if (retryResponse.ok) {
-                successCount++;
+                if (retryData.skipped) {
+                  skippedCount++;
+                } else {
+                  successCount++;
+                }
               } else {
                 errorCount++;
                 console.error(`Failed to generate after retry: ${item.title}`);
@@ -185,7 +191,11 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
               console.error(`Failed to generate: ${item.title}`, data);
             }
           } else {
-            successCount++;
+            if (data.skipped) {
+              skippedCount++;
+            } else {
+              successCount++;
+            }
           }
         } catch (itemError) {
           errorCount++;
@@ -207,10 +217,14 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
       });
       
       setTimeout(() => {
+        let message = `Создано: ${successCount}`;
+        if (skippedCount > 0) message += `, пропущено дублей: ${skippedCount}`;
+        if (errorCount > 0) message += `, ошибок: ${errorCount}`;
+        
         if (errorCount > 0) {
-          toast.success(`Сгенерировано ${successCount} из ${preview.length} писем. Ошибок: ${errorCount}`);
+          toast.success(message);
         } else {
-          toast.success(`Успешно сгенерировано ${successCount} писем!`);
+          toast.success(message);
         }
         onUpdate();
         onOpenChange(false);

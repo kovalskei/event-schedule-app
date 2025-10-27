@@ -528,7 +528,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 ai_api_key = os.environ.get('OPENAI_API_KEY')
                 
                 created_count = 0
+                skipped_count = 0
                 for content_type_id in content_type_ids:
+                    # Проверяем, есть ли уже черновик для этого content_type
+                    cur.execute('''
+                        SELECT id FROM generated_emails
+                        WHERE event_list_id = %s AND content_type_id = %s AND status = 'draft'
+                        LIMIT 1
+                    ''', (list_id, content_type_id))
+                    
+                    existing_draft = cur.fetchone()
+                    
+                    if existing_draft:
+                        print(f'[SKIP] Draft already exists for list_id={list_id}, content_type={content_type_id}')
+                        skipped_count += 1
+                        continue
+                    
                     cur.execute('''
                         SELECT html_template, subject_template, instructions, name
                         FROM email_templates
@@ -570,10 +585,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 conn.commit()
                 
+                message = f'Создано: {created_count}'
+                if skipped_count > 0:
+                    message += f', пропущено дублей: {skipped_count}'
+                
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'count': created_count, 'message': f'Created {created_count} drafts'})
+                    'body': json.dumps({'count': created_count, 'skipped': skipped_count, 'message': message})
                 }
             
             elif action == 'create_content_types':
@@ -957,6 +976,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 content_type_id = content_type_row['id']
+                
+                # Проверяем, есть ли уже черновик для этого title + content_type
+                cur.execute('''
+                    SELECT id FROM generated_emails
+                    WHERE event_list_id = %s 
+                      AND content_type_id = %s 
+                      AND subject = %s 
+                      AND status = 'draft'
+                    LIMIT 1
+                ''', (event_list_id, content_type_id, title))
+                
+                existing = cur.fetchone()
+                if existing:
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({
+                            'success': True, 
+                            'skipped': True,
+                            'email_id': existing['id'],
+                            'message': f'Черновик "{title}" уже существует'
+                        })
+                    }
                 
                 cur.execute('''
                     SELECT html_template, subject_template, instructions
