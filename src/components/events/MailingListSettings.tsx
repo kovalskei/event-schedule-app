@@ -175,10 +175,39 @@ export default function MailingListSettings({
   const handleGenerateDrafts = async () => {
     if (!mailingList) return;
 
-    toast({
-      title: 'Генерация черновиков',
-      description: 'Создание писем для всех выбранных типов контента...',
-    });
+    setLoading(true);
+    try {
+      const res = await fetch(EVENTS_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_drafts',
+          list_id: mailingList.id,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: 'Черновики созданы',
+        description: `Создано ${data.count || 0} черновиков писем`,
+      });
+
+      // Обновляем список мероприятий чтобы показать badge
+      onUpdate();
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка генерации',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLaunch = async () => {

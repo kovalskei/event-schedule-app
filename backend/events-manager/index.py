@@ -466,6 +466,88 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'message': 'UTM rules updated'})
                 }
             
+            elif action == 'generate_drafts':
+                list_id = body_data.get('list_id')
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                cur.execute('''
+                    SELECT content_type_ids, content_type_order
+                    FROM event_mailing_lists
+                    WHERE id = %s
+                ''', (list_id,))
+                
+                mailing_list = cur.fetchone()
+                if not mailing_list or not mailing_list['content_type_ids']:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'No content types selected for this list'})
+                    }
+                
+                content_type_ids = mailing_list['content_type_ids']
+                
+                created_count = 0
+                for content_type_id in content_type_ids:
+                    cur.execute('''
+                        INSERT INTO generated_emails 
+                        (event_list_id, content_type_id, subject, html_body, status)
+                        VALUES (%s, %s, %s, %s, %s)
+                    ''', (
+                        list_id,
+                        content_type_id,
+                        f'Черновик письма для типа {content_type_id}',
+                        f'<p>Это автоматически созданный черновик для типа контента {content_type_id}</p>',
+                        'draft'
+                    ))
+                    created_count += 1
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'count': created_count, 'message': f'Created {created_count} draft emails'})
+                }
+            
+            elif action == 'get_drafts':
+                list_id = body_data.get('list_id')
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                cur.execute('''
+                    SELECT 
+                        ge.id,
+                        ge.content_type_id,
+                        ge.subject,
+                        ge.html_body,
+                        ge.status,
+                        ge.created_at,
+                        ct.name as content_type_name
+                    FROM generated_emails ge
+                    LEFT JOIN content_types ct ON ct.id = ge.content_type_id
+                    WHERE ge.event_list_id = %s AND ge.status = 'draft'
+                    ORDER BY ge.created_at DESC
+                ''', (list_id,))
+                
+                drafts = cur.fetchall()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'drafts': drafts}, default=str)
+                }
+            
             else:
                 return {
                     'statusCode': 400,
