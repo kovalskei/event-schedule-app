@@ -418,113 +418,61 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'No content types selected'})
                     }
                 
+                event_id = mailing_list['event_id']
+                program_doc_id = mailing_list['program_doc_id']
+                pain_doc_id = mailing_list['pain_doc_id']
+                
                 program_text = ''
                 pain_points_text = ''
                 
-                if mailing_list['demo_mode']:
-                    import requests
-                    
-                    if mailing_list['program_doc_id']:
-                        try:
-                            prog_response = requests.get(
-                                'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                                params={'doc_url': mailing_list['program_doc_id']}
-                            )
-                            if prog_response.ok:
-                                program_text = prog_response.json().get('text', '')
-                        except:
-                            pass
-                    
-                    if mailing_list['pain_doc_id']:
-                        try:
-                            pain_response = requests.get(
-                                'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                                params={'doc_url': mailing_list['pain_doc_id']}
-                            )
-                            if pain_response.ok:
-                                pain_points_text = pain_response.json().get('text', '')
-                        except:
-                            pass
+                import requests
                 
-                program_topics = [line.strip() for line in program_text.split('\n') if line.strip()][:3]
-                pain_points = [line.strip() for line in pain_points_text.split('\n') if line.strip()][:3]
-                first_pain = pain_points[0] if pain_points else 'актуальные вызовы'
-                first_topic = program_topics[0] if program_topics else 'интересное мероприятие'
+                if program_doc_id:
+                    try:
+                        prog_response = requests.get(
+                            'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
+                            params={'doc_url': program_doc_id}
+                        )
+                        if prog_response.ok:
+                            program_text = prog_response.json().get('text', '')
+                    except:
+                        pass
+                
+                if pain_doc_id:
+                    try:
+                        pain_response = requests.get(
+                            'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
+                            params={'doc_url': pain_doc_id}
+                        )
+                        if pain_response.ok:
+                            pain_points_text = pain_response.json().get('text', '')
+                    except:
+                        pass
+                
+                program_topics = [line.strip() for line in program_text.split('\n') if line.strip()]
+                pain_points = [line.strip() for line in pain_points_text.split('\n') if line.strip()]
                 
                 created_count = 0
                 for content_type_id in content_type_ids:
-                    topics_html = ''
-                    for i, topic in enumerate(program_topics, 1):
-                        topics_html += f'''
-                        <div style="display: flex; gap: 15px; margin-bottom: 20px;">
-                            <div style="flex-shrink: 0; width: 32px; height: 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                        border-radius: 50%; display: flex; align-items: center; justify-content: center;
-                                        color: white; font-weight: bold; font-size: 14px;">{i}</div>
-                            <div style="flex: 1; padding-top: 4px; color: #333; line-height: 1.6;">{topic}</div>
-                        </div>
-                        '''
+                    cur.execute('''
+                        SELECT html_template, subject_template, instructions, name
+                        FROM email_templates
+                        WHERE event_id = %s AND content_type_id = %s
+                        LIMIT 1
+                    ''', (event_id, content_type_id))
                     
-                    pains_html = ''
-                    for pain in pain_points:
-                        pains_html += f'<li style="margin-bottom: 8px; color: #666;">{pain}</li>'
+                    template_row = cur.fetchone()
                     
-                    pains_section = ''
-                    if pain_points:
-                        pains_section = f'''
-                        <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 15px;">
-                            Мы знаем, с какими вызовами вы сталкиваетесь:
-                        </p>
-                        <ul style="list-style: none; padding: 0; margin: 0 0 30px 0;">
-                            {pains_html}
-                        </ul>
-                        '''
+                    if not template_row or not template_row['html_template']:
+                        continue
                     
-                    demo_html = f'''
-                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: white;">
-                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center;">
-                            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">
-                                {first_topic}
-                            </h1>
-                        </div>
-                        
-                        <div style="padding: 40px 30px;">
-                            <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
-                                Здравствуйте!
-                            </p>
-                            
-                            {pains_section}
-                            
-                            <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
-                                Поэтому мы подготовили для вас специальную программу:
-                            </p>
-                            
-                            <div style="margin-bottom: 35px;">
-                                {topics_html if topics_html else '<p style="color: #666;">Программа уточняется</p>'}
-                            </div>
-                            
-                            <div style="text-align: center; margin: 40px 0;">
-                                <a href="#" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                                                   color: white; padding: 16px 40px; text-decoration: none; border-radius: 8px;
-                                                   font-weight: 600; font-size: 16px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                                    Зарегистрироваться
-                                </a>
-                            </div>
-                            
-                            <p style="color: #666; font-size: 14px; line-height: 1.6; margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px;">
-                                С уважением,<br>
-                                Команда организаторов
-                            </p>
-                        </div>
-                        
-                        <div style="background: #f8f9fa; padding: 20px; text-align: center;">
-                            <p style="color: #999; font-size: 12px; margin: 0;">
-                                Это демонстрационное письмо. В продакшене здесь будет контент, сгенерированный AI.
-                            </p>
-                        </div>
-                    </div>
-                    '''
+                    html_template = template_row['html_template']
+                    subject_template = template_row['subject_template'] or 'Новое письмо'
                     
-                    subject = f'Решаем {first_pain}: {first_topic}'
+                    final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
+                    final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
+                    final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
+                    final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
                     
                     cur.execute('''
                         INSERT INTO generated_emails (
@@ -537,8 +485,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     ''', (
                         list_id,
                         content_type_id,
-                        subject,
-                        demo_html,
+                        final_subject,
+                        final_html,
                         'draft'
                     ))
                     created_count += 1
