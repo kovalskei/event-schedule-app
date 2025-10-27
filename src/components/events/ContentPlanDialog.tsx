@@ -44,6 +44,7 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
   const [contentPlanUrl, setContentPlanUrl] = useState('');
   const [selectedListId, setSelectedListId] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [generatingProgress, setGeneratingProgress] = useState<{current: number, total: number, status: string} | null>(null);
   const [preview, setPreview] = useState<ContentPlanRow[]>([]);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -125,6 +126,8 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
     }
 
     setLoading(true);
+    setGeneratingProgress({ current: 0, total: preview.length, status: 'Начинаем генерацию...' });
+    
     try {
       const docId = extractDocId(contentPlanUrl);
       const response = await fetch('https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750', {
@@ -169,16 +172,22 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
         throw new Error(data.message || data.error || 'Ошибка генерации писем');
       }
 
-      toast.success(`Сгенерировано ${data.generated_count} писем!`);
-      onUpdate();
-      onOpenChange(false);
-      setContentPlanUrl('');
-      setSelectedListId('');
-      setPreview([]);
-      setShowPreview(false);
+      setGeneratingProgress({ current: data.generated_count || 0, total: preview.length, status: 'Завершено!' });
+      
+      setTimeout(() => {
+        toast.success(`Сгенерировано ${data.generated_count} писем!`);
+        onUpdate();
+        onOpenChange(false);
+        setContentPlanUrl('');
+        setSelectedListId('');
+        setPreview([]);
+        setShowPreview(false);
+        setGeneratingProgress(null);
+      }, 1500);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Ошибка генерации');
       console.error('[ContentPlan] Generate error:', error);
+      setGeneratingProgress(null);
     } finally {
       setLoading(false);
     }
@@ -252,6 +261,25 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
                 </div>
               </div>
 
+              {generatingProgress && (
+                <div className="border rounded-lg p-4 bg-blue-50 space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">Генерация писем...</span>
+                    <span className="text-gray-600">{generatingProgress.current} / {generatingProgress.total}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${(generatingProgress.current / generatingProgress.total) * 100}%` }}
+                    />
+                  </div>
+                  <div className="text-xs text-gray-600 flex items-center gap-1">
+                    <Icon name="Loader2" className="w-3 h-3 animate-spin" />
+                    {generatingProgress.status}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <Button 
                   onClick={() => {
@@ -260,6 +288,7 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
                   }}
                   variant="outline"
                   className="flex-1"
+                  disabled={loading}
                 >
                   Назад
                 </Button>

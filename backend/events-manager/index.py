@@ -857,15 +857,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 content = content[:-3]
                             content = content.strip()
                             
-                            # Исправляем некорректные escape-последовательности
-                            content = content.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"')
-                            
                             try:
                                 email_data = json.loads(content)
                             except json.JSONDecodeError as json_err:
                                 print(f'[ERROR] JSON parse failed for "{title}": {str(json_err)}')
                                 print(f'[ERROR] Content preview: {content[:500]}')
-                                continue
+                                
+                                # Пробуем исправить проблемные escape-последовательности
+                                try:
+                                    import re
+                                    # Убираем одинарные обратные слэши перед буквами (не \n, \t, \", \\)
+                                    fixed_content = re.sub(r'\\(?![ntr"\\])', '', content)
+                                    email_data = json.loads(fixed_content)
+                                    print(f'[AI] Fixed JSON parsing with regex cleanup')
+                                except Exception as e2:
+                                    print(f'[ERROR] Even after cleanup failed: {str(e2)}')
+                                    continue
                             final_subject = email_data.get('subject', title)
                             final_html = email_data.get('html', '')
                             
