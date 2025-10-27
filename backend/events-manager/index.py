@@ -433,23 +433,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     try:
                         prog_response = requests.get(
                             'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                            params={'doc_url': program_doc_id}
+                            params={'url': program_doc_id}
                         )
                         if prog_response.ok:
-                            program_text = prog_response.json().get('text', '')
-                    except:
-                        pass
+                            response_data = prog_response.json()
+                            program_text = response_data.get('content', response_data.get('text', ''))
+                            print(f'[DEBUG] Program response: {response_data.get("type", "unknown")} type')
+                    except Exception as e:
+                        print(f'[ERROR] Failed to read program doc: {str(e)}')
                 
                 if pain_doc_id:
                     try:
                         pain_response = requests.get(
                             'https://functions.poehali.dev/dd18fef9-e48e-4b98-aae5-e8fc15a25e50',
-                            params={'doc_url': pain_doc_id}
+                            params={'url': pain_doc_id}
                         )
                         if pain_response.ok:
-                            pain_points_text = pain_response.json().get('text', '')
-                    except:
-                        pass
+                            response_data = pain_response.json()
+                            pain_points_text = response_data.get('content', response_data.get('text', ''))
+                            print(f'[DEBUG] Pain response: {response_data.get("type", "unknown")} type')
+                    except Exception as e:
+                        print(f'[ERROR] Failed to read pain doc: {str(e)}')
                 
                 program_topics = [line.strip() for line in program_text.split('\n') if line.strip()]
                 pain_points = [line.strip() for line in pain_points_text.split('\n') if line.strip()]
