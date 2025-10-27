@@ -634,6 +634,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 print(f'[CONTENT_PLAN] Found {len(rows)} valid rows')
                 
+                cur.execute('''
+                    SELECT ai_provider, ai_model, ai_assistant_id
+                    FROM event_mailing_lists
+                    WHERE id = %s
+                ''', (event_list_id,))
+                
+                ai_settings = cur.fetchone()
+                ai_provider = ai_settings['ai_provider'] if ai_settings else 'openai'
+                ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
+                ai_assistant_id = ai_settings['ai_assistant_id'] if ai_settings else ''
+                
+                openai_api_key = os.environ.get('OPENAI_API_KEY', '')
+                
+                print(f'[AI] Using provider={ai_provider}, model={ai_model}')
+                
                 generated_count = 0
                 for row in rows:
                     title = row['title']
@@ -651,32 +666,87 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         print(f'[WARN] No template for content_type_id={content_type_id}')
                         continue
                     
-                    html_template = template_row['html_template'] or ''
-                    subject_template = template_row['subject_template'] or title
+                    instructions = template_row['instructions'] or ''
                     
-                    final_html = html_template.replace('{program_topics}', program_text)
-                    final_html = final_html.replace('{pain_points}', pain_points_text)
-                    final_html = final_html.replace('{title}', title)
+                    prompt = f"""Ты - эксперт по email-маркетингу. Создай письмо на основе:
+
+Заголовок письма: {title}
+
+Программа мероприятия:
+{program_text[:2000]}
+
+Боли целевой аудитории:
+{pain_points_text[:1000]}
+
+Инструкции к шаблону:
+{instructions}
+
+Задача:
+1. Выбери из программы темы, которые лучше всего соответствуют заголовку "{title}"
+2. Выбери из болей ЦА те, которые решаются этими темами
+3. Создай тему письма (до 60 символов) на основе заголовка
+4. Создай HTML-письмо с акцентом на выбранные боли и темы программы
+
+Верни JSON в формате:
+{{"subject": "тема письма", "html": "HTML код письма"}}
+"""
                     
-                    final_subject = subject_template.replace('{title}', title)
-                    final_subject = final_subject.replace('{program_topics}', program_text[:100])
+                    print(f'[AI] Generating for title: {title}')
                     
-                    cur.execute('''
-                        INSERT INTO generated_emails (
-                            event_list_id,
-                            content_type_id,
-                            subject,
-                            html_content,
-                            status
-                        ) VALUES (%s, %s, %s, %s, %s)
-                    ''', (
-                        event_list_id,
-                        content_type_id,
-                        final_subject,
-                        final_html,
-                        'draft'
-                    ))
-                    generated_count += 1
+                    try:
+                        req = urllib.request.Request(
+                            'https://api.openai.com/v1/chat/completions',
+                            data=json.dumps({
+                                'model': ai_model,
+                                'messages': [{'role': 'user', 'content': prompt}],
+                                'temperature': 0.7,
+                                'max_tokens': 2000
+                            }).encode('utf-8'),
+                            headers={
+                                'Content-Type': 'application/json',
+                                'Authorization': f'Bearer {openai_api_key}'
+                            }
+                        )
+                        
+                        with urllib.request.urlopen(req, timeout=60) as response:
+                            result = json.loads(response.read().decode('utf-8'))
+                            content = result['choices'][0]['message']['content']
+                            
+                            content = content.strip()
+                            if content.startswith('```json'):
+                                content = content[7:]
+                            if content.startswith('```'):
+                                content = content[3:]
+                            if content.endswith('```'):
+                                content = content[:-3]
+                            content = content.strip()
+                            
+                            email_data = json.loads(content)
+                            final_subject = email_data.get('subject', title)
+                            final_html = email_data.get('html', '')
+                            
+                            print(f'[AI] Generated subject: {final_subject}')
+                            
+                            cur.execute('''
+                                INSERT INTO generated_emails (
+                                    event_list_id,
+                                    content_type_id,
+                                    subject,
+                                    html_content,
+                                    status
+                                ) VALUES (%s, %s, %s, %s, %s)
+                            ''', (
+                                event_list_id,
+                                content_type_id,
+                                final_subject,
+                                final_html,
+                                'draft'
+                            ))
+                            generated_count += 1
+                            
+                    except Exception as e:
+                        print(f'[ERROR] AI generation failed for "{title}": {str(e)}')
+                        continue
                 
                 conn.commit()
                 print(f'[CONTENT_PLAN] Generated {generated_count} emails')
