@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { toast as sonnerToast } from 'sonner';
 import Icon from '@/components/ui/icon';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
+const IMAGE_UPLOADER_URL = 'https://functions.poehali.dev/61daaad5-eb92-4f21-8104-8760f8d0094e';
 
 interface Event {
   id: number;
@@ -22,6 +24,7 @@ interface Event {
   pain_doc_id: string;
   default_tone: string;
   email_template_examples: string;
+  logo_url?: string;
 }
 
 interface ContentType {
@@ -55,6 +58,7 @@ export default function EventSettingsDialog({
 }: EventSettingsDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
   const [event, setEvent] = useState<Event | null>(null);
   const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
@@ -236,6 +240,81 @@ export default function EventSettingsDialog({
     }
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !event) return;
+
+    if (!file.type.startsWith('image/')) {
+      sonnerToast.error('Пожалуйста, выберите изображение');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      sonnerToast.error('Размер файла не должен превышать 2 МБ');
+      return;
+    }
+
+    setLogoUploading(true);
+
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        
+        try {
+          const uploadRes = await fetch(IMAGE_UPLOADER_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              image: base64,
+              filename: file.name,
+            }),
+          });
+
+          const uploadData = await uploadRes.json();
+
+          if (uploadData.error) {
+            throw new Error(uploadData.error);
+          }
+
+          const imageUrl = uploadData.url;
+          setEvent({ ...event, logo_url: imageUrl });
+
+          const updateRes = await fetch(EVENTS_MANAGER_URL, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'update_event',
+              event_id: event.id,
+              logo_url: imageUrl,
+            }),
+          });
+
+          const updateData = await updateRes.json();
+
+          if (updateData.error) {
+            throw new Error(updateData.error);
+          }
+
+          sonnerToast.success('Логотип загружен и сохранён');
+          onUpdate();
+        } catch (error: any) {
+          sonnerToast.error(error.message || 'Ошибка загрузки логотипа');
+        } finally {
+          setLogoUploading(false);
+        }
+      };
+      reader.onerror = () => {
+        sonnerToast.error('Ошибка чтения файла');
+        setLogoUploading(false);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      sonnerToast.error('Ошибка загрузки логотипа');
+      setLogoUploading(false);
+    }
+  };
+
   if (!event) {
     return null;
   }
@@ -280,6 +359,40 @@ export default function EventSettingsDialog({
                     value={event.description || ''}
                     onChange={(e) => setEvent({ ...event, description: e.target.value })}
                   />
+                </div>
+
+                <div>
+                  <Label htmlFor="logo">Логотип для шапки писем</Label>
+                  <div className="space-y-2">
+                    {event.logo_url && (
+                      <div className="border rounded-lg p-4 bg-gray-50">
+                        <img 
+                          src={event.logo_url} 
+                          alt="Event logo" 
+                          className="h-16 object-contain"
+                        />
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="mt-2"
+                          onClick={() => setEvent({ ...event, logo_url: '' })}
+                        >
+                          <Icon name="X" className="w-3 h-3 mr-1" />
+                          Удалить
+                        </Button>
+                      </div>
+                    )}
+                    <Input
+                      id="logo"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoUpload}
+                      disabled={logoUploading}
+                    />
+                    <p className="text-xs text-gray-500">
+                      {logoUploading ? 'Загрузка...' : 'Рекомендуемый размер: 600x100px, максимум 2 МБ'}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-4">

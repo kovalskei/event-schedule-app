@@ -48,42 +48,54 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Если это data URL (base64)
         if image_data.startswith('data:'):
-            # Извлекаем base64 часть
             header, encoded = image_data.split(',', 1)
-            image_bytes = base64.b64decode(encoded)
-        # Если это уже base64 строка
+            image_base64 = encoded
         elif not image_data.startswith('http'):
-            image_bytes = base64.b64decode(image_data)
+            image_base64 = image_data
         else:
-            # Если это URL - скачиваем изображение
             with urllib.request.urlopen(image_data) as response:
                 image_bytes = response.read()
+                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
         
-        # Используем внешний сервис для хостинга (например imgbb, imgur или свой S3)
-        # Временно возвращаем data URL обратно (в продакшене заменить на реальное хранилище)
+        # Загружаем на imgbb
+        imgbb_api_key = os.environ.get('IMGBB_API_KEY')
         
-        # TODO: Интегрировать с реальным хранилищем (S3/imgbb)
-        image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+        if not imgbb_api_key:
+            return {
+                'statusCode': 500,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'IMGBB_API_KEY not configured'})
+            }
         
-        # Определяем MIME тип
-        mime_type = 'image/png'
-        if filename.endswith('.jpg') or filename.endswith('.jpeg'):
-            mime_type = 'image/jpeg'
-        elif filename.endswith('.gif'):
-            mime_type = 'image/gif'
-        elif filename.endswith('.svg'):
-            mime_type = 'image/svg+xml'
+        # Отправляем на imgbb
+        upload_data = urllib.parse.urlencode({
+            'key': imgbb_api_key,
+            'image': image_base64,
+            'name': filename
+        }).encode('utf-8')
         
-        data_url = f'data:{mime_type};base64,{image_base64}'
+        imgbb_request = urllib.request.Request(
+            'https://api.imgbb.com/1/upload',
+            data=upload_data,
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        )
+        
+        with urllib.request.urlopen(imgbb_request) as response:
+            result = json.loads(response.read().decode('utf-8'))
+        
+        if not result.get('success'):
+            raise Exception('ImgBB upload failed')
+        
+        image_url = result['data']['url']
         
         return {
             'statusCode': 200,
             'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
             'body': json.dumps({
-                'url': data_url,
+                'url': image_url,
                 'filename': filename,
-                'size': len(image_bytes),
-                'message': 'Image uploaded successfully (stored as data URL)'
+                'size': result['data']['size'],
+                'message': 'Image uploaded to ImgBB successfully'
             })
         }
         
