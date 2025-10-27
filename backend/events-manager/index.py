@@ -473,12 +473,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     instructions = template_row['instructions'] or ''
                     
                     if not ai_api_key:
+                        print(f'[DEMO] No API key, using template substitution')
                         final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
                         final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
                         final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
                         final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
                     else:
                         try:
+                            print(f'[AI] Calling AI generator for content_type={content_type_id}')
                             ai_response = requests.post(
                                 'https://functions.poehali.dev/8d7c9e05-6ad1-43e3-bc2a-dd9e68ceeb44',
                                 json={
@@ -492,14 +494,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 timeout=30
                             )
                             
+                            print(f'[AI] Response status: {ai_response.status_code}')
+                            
                             if ai_response.ok:
                                 ai_data = ai_response.json()
                                 final_html = ai_data.get('html', html_template)
                                 final_subject = ai_data.get('subject', subject_template)
+                                print(f'[AI] Generated subject: {final_subject[:50]}...')
                             else:
+                                print(f'[AI] Error response: {ai_response.text[:200]}')
                                 final_html = html_template
                                 final_subject = subject_template
-                        except:
+                        except Exception as e:
+                            print(f'[AI] Exception: {str(e)}')
                             final_html = html_template
                             final_subject = subject_template
                     
