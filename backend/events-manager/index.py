@@ -11,6 +11,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     Returns: HTTP response с данными
     '''
     method: str = event.get('httpMethod', 'GET')
+    query_params = event.get('queryStringParameters') or {}
+    action = query_params.get('action', 'unknown')
+    
+    print(f'[REQUEST] {method} action={action}')
     
     if method == 'OPTIONS':
         return {

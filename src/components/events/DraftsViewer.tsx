@@ -60,7 +60,7 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh]">
+      <DialogContent className="max-w-6xl h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Черновики писем — {listName}</DialogTitle>
           <DialogDescription>
@@ -79,7 +79,7 @@ export default function DraftsViewer({ open, onOpenChange, eventListId, listName
             <p className="text-sm mt-1">Создайте черновики в настройках списка рассылки</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4 h-[600px]">
+          <div className="grid grid-cols-3 gap-4 flex-1 min-h-0">
             {/* Список черновиков */}
             <ScrollArea className="col-span-1 border rounded-lg">
               <div className="p-2 space-y-2">
