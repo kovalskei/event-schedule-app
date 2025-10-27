@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
 import MailingListSettings from './MailingListSettings';
 import DraftsViewer from './DraftsViewer';
+import ContentPlanDialog from './ContentPlanDialog';
 
 interface Event {
   id: number;
@@ -53,6 +54,7 @@ interface EventDetailsProps {
 export default function EventDetails({ event, mailingLists, contentTypes, onBack, onLinkList, onEditSettings, onUpdate }: EventDetailsProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
+  const [contentPlanOpen, setContentPlanOpen] = useState(false);
   const [selectedList, setSelectedList] = useState<MailingList | null>(null);
 
   const handleOpenSettings = (list: MailingList) => {
@@ -121,10 +123,16 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
                 Привязанные списки из UniSender с UTM-метками
               </CardDescription>
             </div>
-            <Button onClick={onLinkList}>
-              <Icon name="Link" className="w-4 h-4 mr-2" />
-              Привязать список
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setContentPlanOpen(true)} variant="outline">
+                <Icon name="Calendar" className="w-4 h-4 mr-2" />
+                Контент-план
+              </Button>
+              <Button onClick={onLinkList}>
+                <Icon name="Link" className="w-4 h-4 mr-2" />
+                Привязать список
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -205,6 +213,15 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
         onOpenChange={setDraftsOpen}
         eventListId={selectedList?.id || null}
         listName={selectedList?.unisender_list_name || ''}
+      />
+
+      <ContentPlanDialog
+        open={contentPlanOpen}
+        onOpenChange={setContentPlanOpen}
+        event={event}
+        mailingLists={mailingLists}
+        contentTypes={contentTypes}
+        onUpdate={onUpdate}
       />
     </div>
   );

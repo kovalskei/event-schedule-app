@@ -3,6 +3,53 @@ import os
 from typing import Dict, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import urllib.request
+import csv
+from io import StringIO
+
+def read_google_doc(url: str) -> str:
+    """Читает Google Docs или Sheets напрямую"""
+    try:
+        doc_id = ''
+        doc_type = 'docs'
+        
+        if '/document/d/' in url:
+            doc_id = url.split('/document/d/')[1].split('/')[0]
+            doc_type = 'docs'
+        elif '/spreadsheets/d/' in url:
+            doc_id = url.split('/spreadsheets/d/')[1].split('/')[0]
+            doc_type = 'sheets'
+        else:
+            doc_id = url
+            doc_type = 'sheets'
+        
+        if not doc_id:
+            return ''
+        
+        if doc_type == 'sheets':
+            export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+            req = urllib.request.Request(export_url)
+            req.add_header('User-Agent', 'Mozilla/5.0')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                csv_content = response.read().decode('utf-8')
+                csv_reader = csv.reader(StringIO(csv_content))
+                text_lines = []
+                
+                for row in csv_reader:
+                    text_lines.append('\t'.join(row))
+                
+                return '\n'.join(text_lines)
+        else:
+            export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=txt'
+            req = urllib.request.Request(export_url)
+            req.add_header('User-Agent', 'Mozilla/5.0')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                return response.read().decode('utf-8')
+    except Exception as e:
+        print(f'[ERROR] Failed to read Google doc: {str(e)}')
+        return ''
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -160,6 +207,39 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                     'body': json.dumps({'drafts': [dict(d) for d in drafts]}, default=str)
+                }
+            
+            elif action == 'preview_content_plan':
+                doc_id = params.get('doc_id', '')
+                
+                if not doc_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'doc_id required'})
+                    }
+                
+                print(f'[DEBUG] Reading content plan from: {doc_id}')
+                content_text = read_google_doc(doc_id)
+                print(f'[DEBUG] Content plan text length: {len(content_text)}')
+                
+                rows = []
+                for line in content_text.split('\n'):
+                    line = line.strip()
+                    if not line or line.lower().startswith('заголовок'):
+                        continue
+                    
+                    parts = line.split('\t')
+                    if len(parts) >= 2:
+                        title = parts[0].strip()
+                        content_type = parts[1].strip()
+                        if title and content_type:
+                            rows.append({'title': title, 'content_type': content_type})
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'rows': rows, 'total': len(rows)})
                 }
             
             else:
@@ -427,53 +507,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 program_text = ''
                 pain_points_text = ''
                 
-                import requests
-                import urllib.request
-                import urllib.error
-                import csv
-                from io import StringIO
-                
-                def read_google_doc(url: str) -> str:
-                    """Читает Google Docs или Sheets напрямую"""
-                    try:
-                        doc_id = ''
-                        doc_type = 'docs'
-                        
-                        if '/document/d/' in url:
-                            doc_id = url.split('/document/d/')[1].split('/')[0]
-                            doc_type = 'docs'
-                        elif '/spreadsheets/d/' in url:
-                            doc_id = url.split('/spreadsheets/d/')[1].split('/')[0]
-                            doc_type = 'sheets'
-                        
-                        if not doc_id:
-                            return ''
-                        
-                        if doc_type == 'sheets':
-                            export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
-                            req = urllib.request.Request(export_url)
-                            req.add_header('User-Agent', 'Mozilla/5.0')
-                            
-                            with urllib.request.urlopen(req, timeout=10) as response:
-                                csv_content = response.read().decode('utf-8')
-                                csv_reader = csv.reader(StringIO(csv_content))
-                                text_lines = []
-                                
-                                for row in csv_reader:
-                                    text_lines.append('\t'.join(row))
-                                
-                                return '\n'.join(text_lines)
-                        else:
-                            export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=txt'
-                            req = urllib.request.Request(export_url)
-                            req.add_header('User-Agent', 'Mozilla/5.0')
-                            
-                            with urllib.request.urlopen(req, timeout=10) as response:
-                                return response.read().decode('utf-8')
-                    except Exception as e:
-                        print(f'[ERROR] Failed to read Google doc: {str(e)}')
-                        return ''
-                
                 if program_doc_id:
                     print(f'[DEBUG] Reading program from: {program_doc_id}')
                     program_text = read_google_doc(program_doc_id)
@@ -541,6 +574,117 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                     'body': json.dumps({'count': created_count, 'message': f'Created {created_count} drafts'})
+                }
+            
+            elif action == 'generate_from_content_plan':
+                event_id = body_data.get('event_id')
+                event_list_id = body_data.get('event_list_id')
+                content_plan_doc_id = body_data.get('content_plan_doc_id', '')
+                
+                if not event_id or not event_list_id or not content_plan_doc_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id, event_list_id, content_plan_doc_id required'})
+                    }
+                
+                print(f'[CONTENT_PLAN] Starting generation for event={event_id}, list={event_list_id}')
+                
+                cur.execute('SELECT * FROM events WHERE id = %s', (event_id,))
+                evt = cur.fetchone()
+                
+                if not evt:
+                    return {
+                        'statusCode': 404,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Event not found'})
+                    }
+                
+                program_doc_id = evt['program_doc_id']
+                pain_doc_id = evt['pain_doc_id']
+                
+                print(f'[DEBUG] Reading program from: {program_doc_id}')
+                program_text = read_google_doc(program_doc_id)
+                
+                print(f'[DEBUG] Reading pain points from: {pain_doc_id}')
+                pain_points_text = read_google_doc(pain_doc_id)
+                
+                print(f'[DEBUG] Reading content plan from: {content_plan_doc_id}')
+                content_plan_text = read_google_doc(content_plan_doc_id)
+                
+                cur.execute('SELECT * FROM content_types WHERE event_id = %s', (event_id,))
+                content_types_list = cur.fetchall()
+                content_type_map = {ct['name']: ct['id'] for ct in content_types_list}
+                
+                rows = []
+                for line in content_plan_text.split('\n'):
+                    line = line.strip()
+                    if not line or line.lower().startswith('заголовок'):
+                        continue
+                    
+                    parts = line.split('\t')
+                    if len(parts) >= 2:
+                        title = parts[0].strip()
+                        content_type_name = parts[1].strip()
+                        if title and content_type_name and content_type_name in content_type_map:
+                            rows.append({
+                                'title': title,
+                                'content_type_id': content_type_map[content_type_name]
+                            })
+                
+                print(f'[CONTENT_PLAN] Found {len(rows)} valid rows')
+                
+                generated_count = 0
+                for row in rows:
+                    title = row['title']
+                    content_type_id = row['content_type_id']
+                    
+                    cur.execute('''
+                        SELECT html_template, subject_template, instructions
+                        FROM email_templates
+                        WHERE event_id = %s AND content_type_id = %s
+                        LIMIT 1
+                    ''', (event_id, content_type_id))
+                    
+                    template_row = cur.fetchone()
+                    if not template_row:
+                        print(f'[WARN] No template for content_type_id={content_type_id}')
+                        continue
+                    
+                    html_template = template_row['html_template'] or ''
+                    subject_template = template_row['subject_template'] or title
+                    
+                    final_html = html_template.replace('{program_topics}', program_text)
+                    final_html = final_html.replace('{pain_points}', pain_points_text)
+                    final_html = final_html.replace('{title}', title)
+                    
+                    final_subject = subject_template.replace('{title}', title)
+                    final_subject = final_subject.replace('{program_topics}', program_text[:100])
+                    
+                    cur.execute('''
+                        INSERT INTO generated_emails (
+                            event_list_id,
+                            content_type_id,
+                            subject,
+                            html_content,
+                            status
+                        ) VALUES (%s, %s, %s, %s, %s)
+                    ''', (
+                        event_list_id,
+                        content_type_id,
+                        final_subject,
+                        final_html,
+                        'draft'
+                    ))
+                    generated_count += 1
+                
+                conn.commit()
+                print(f'[CONTENT_PLAN] Generated {generated_count} emails')
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'generated_count': generated_count})
                 }
             
             else:
