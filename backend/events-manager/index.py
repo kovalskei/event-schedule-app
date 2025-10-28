@@ -4,11 +4,26 @@ from typing import Dict, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import urllib.request
+import urllib.parse
 import csv
 from io import StringIO
 
-def read_google_doc(url: str) -> str:
-    """Читает Google Docs или Sheets напрямую"""
+def extract_meta_from_csv(csv_content: str) -> Dict[str, str]:
+    """Извлекает метаданные из CSV в формате A (ключ) -> B (значение)"""
+    meta = {}
+    csv_reader = csv.reader(StringIO(csv_content))
+    
+    for row in csv_reader:
+        if len(row) >= 2 and row[0] and row[1]:
+            key = row[0].strip().lower()
+            value = row[1].strip()
+            if key and value:
+                meta[key] = value
+    
+    return meta
+
+def read_google_doc(url: str, sheet_name: str = '') -> Any:
+    """Читает Google Docs или Sheets напрямую. Если sheet_name='Meta', возвращает dict с meta"""
     try:
         doc_id = ''
         doc_type = 'docs'
@@ -27,19 +42,26 @@ def read_google_doc(url: str) -> str:
             return ''
         
         if doc_type == 'sheets':
-            export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+            if sheet_name:
+                export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(sheet_name)}'
+            else:
+                export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+            
             req = urllib.request.Request(export_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
             
             with urllib.request.urlopen(req, timeout=10) as response:
                 csv_content = response.read().decode('utf-8')
-                csv_reader = csv.reader(StringIO(csv_content))
-                text_lines = []
                 
-                for row in csv_reader:
-                    text_lines.append('\t'.join(row))
-                
-                return '\n'.join(text_lines)
+                if sheet_name and sheet_name.lower() == 'meta':
+                    meta = extract_meta_from_csv(csv_content)
+                    return {'meta': meta}
+                else:
+                    csv_reader = csv.reader(StringIO(csv_content))
+                    text_lines = []
+                    for row in csv_reader:
+                        text_lines.append('\t'.join(row))
+                    return '\n'.join(text_lines)
         else:
             export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=txt'
             req = urllib.request.Request(export_url)
@@ -380,6 +402,58 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'template_id': template_id, 'message': 'Email template created'})
                 }
             
+            elif action == 'delete_email_template':
+                template_id = body_data.get('template_id')
+                
+                if not template_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'template_id required'})
+                    }
+                
+                cur.execute('DELETE FROM email_templates WHERE id = %s', (template_id,))
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Email template deleted'})
+                }
+            
+            elif action == 'update_email_template':
+                template_id = body_data.get('template_id')
+                content_type_id = body_data.get('content_type_id')
+                name = body_data.get('name', '')
+                html_template = body_data.get('html_template', '')
+                subject_template = body_data.get('subject_template', '')
+                instructions = body_data.get('instructions', '')
+                
+                if not template_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'template_id required'})
+                    }
+                
+                cur.execute('''
+                    UPDATE email_templates SET
+                        content_type_id = %s,
+                        name = %s,
+                        html_template = %s,
+                        subject_template = %s,
+                        instructions = %s
+                    WHERE id = %s
+                ''', (content_type_id, name, html_template, subject_template, instructions, template_id))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Email template updated'})
+                }
+            
             elif action == 'update_mailing_list_settings':
                 list_id = body_data.get('list_id')
                 content_type_ids = body_data.get('content_type_ids', [])
@@ -432,6 +506,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                     'body': json.dumps({'message': 'Mailing list settings updated'})
+                }
+            
+            elif action == 'delete_mailing_list':
+                list_id = body_data.get('list_id')
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                # Delete drafts first
+                cur.execute('DELETE FROM email_drafts WHERE mailing_list_id = %s', (list_id,))
+                
+                # Delete mailing list
+                cur.execute('DELETE FROM event_mailing_lists WHERE id = %s', (list_id,))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Mailing list deleted'})
                 }
             
             elif action == 'import_content_plan':
@@ -532,23 +630,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 ai_api_key = os.environ.get('OPENAI_API_KEY')
                 
+                # Получаем AI настройки из mailing_list
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY')
+                openai_key = os.environ.get('OPENAI_API_KEY')
+                
+                if openrouter_key:
+                    api_key = openrouter_key
+                    api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                elif openai_key:
+                    api_key = openai_key
+                    api_url = 'https://api.openai.com/v1/chat/completions'
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'No AI API key configured'})
+                    }
+                
                 created_count = 0
                 skipped_count = 0
                 for content_type_id in content_type_ids:
-                    # Проверяем, есть ли уже черновик для этого content_type
-                    cur.execute('''
-                        SELECT id FROM generated_emails
-                        WHERE event_list_id = %s AND content_type_id = %s AND status = 'draft'
-                        LIMIT 1
-                    ''', (list_id, content_type_id))
-                    
-                    existing_draft = cur.fetchone()
-                    
-                    if existing_draft:
-                        print(f'[SKIP] Draft already exists for list_id={list_id}, content_type={content_type_id}')
-                        skipped_count += 1
-                        continue
-                    
                     cur.execute('''
                         SELECT html_template, subject_template, instructions, name
                         FROM email_templates
@@ -564,12 +665,92 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     html_template = template_row['html_template'] or ''
                     subject_template = template_row['subject_template'] or 'Новое письмо'
                     instructions = template_row['instructions'] or ''
+                    template_name = template_row['name'] or 'Draft'
                     
-                    print(f'[TEMPLATE] Using template substitution for content_type={content_type_id}')
-                    final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
-                    final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
-                    final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
-                    final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
+                    if not instructions:
+                        print(f'[SKIP] No instructions for template {template_name}')
+                        continue
+                    
+                    print(f'[AI_DRAFT] Generating draft using AI for content_type={content_type_id}')
+                    
+                    # Формируем промпт: AI должен выбрать релевантный контент из данных
+                    user_prompt = f"""Ты — email-маркетолог конференции. Твоя задача — выбрать подходящий контент для письма.
+
+ИНСТРУКЦИИ:
+{instructions}
+
+ПРОГРАММА МЕРОПРИЯТИЯ (спикеры, темы, время):
+{program_text[:20000]}
+
+БОЛИ И ЗАПРОСЫ АУДИТОРИИ:
+{pain_points_text[:20000]}
+
+ЗАДАЧА:
+1. Прочитай ИНСТРУКЦИИ — там описано, какой тип письма нужен и какой тон использовать
+2. Выбери из ПРОГРАММЫ 2-4 релевантных спикера/темы (кто и о чём говорит)
+3. Выбери из БОЛЕЙ 1-3 реальных цитаты или запроса (конкретные фразы людей)
+4. Придумай цепляющую тему письма (subject)
+
+ВЕРНИ СТРОГО JSON:
+{{
+  "subject": "Тема письма (живая, без клише)",
+  "pain_points": "1-2 параграфа с болями аудитории (используй реальные цитаты)",
+  "program_topics": "Список из 2-4 спикеров с кратким описанием их тем (кто, откуда, о чём)"
+}}
+
+НЕ пиши HTML, НЕ добавляй лишнего текста — только JSON."""
+                    
+                    try:
+                        ai_response = requests.post(
+                            api_url,
+                            headers={
+                                'Authorization': f'Bearer {api_key}',
+                                'Content-Type': 'application/json'
+                            },
+                            json={
+                                'model': 'gpt-4o-mini',
+                                'messages': [
+                                    {'role': 'system', 'content': 'Ты эксперт по email-маркетингу. Возвращаешь ТОЛЬКО валидный JSON, без комментариев.'},
+                                    {'role': 'user', 'content': user_prompt}
+                                ],
+                                'temperature': 0.9,
+                                'max_tokens': 1500
+                            },
+                            timeout=60
+                        )
+                        
+                        if ai_response.status_code != 200:
+                            print(f'[ERROR] AI API error: {ai_response.status_code} - {ai_response.text}')
+                            continue
+                        
+                        ai_content = ai_response.json()['choices'][0]['message']['content']
+                        
+                        # Парсим JSON из ответа AI
+                        import re
+                        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', ai_content, re.DOTALL)
+                        if json_match:
+                            result = json.loads(json_match.group())
+                            ai_subject = result.get('subject', template_name)
+                            ai_pain_points = result.get('pain_points', '')
+                            ai_program_topics = result.get('program_topics', '')
+                            
+                            # Подставляем AI-контент в готовый HTML-шаблон
+                            final_html = html_template.replace('{pain_points}', ai_pain_points)
+                            final_html = final_html.replace('{program_topics}', ai_program_topics)
+                            
+                            final_subject = subject_template.replace('{pain_points}', ai_subject)
+                            final_subject = final_subject.replace('{program_topics}', ai_subject)
+                            
+                            # Если в subject_template нет плейсхолдеров, используем AI subject
+                            if '{' not in subject_template:
+                                final_subject = ai_subject
+                        else:
+                            print(f'[ERROR] Failed to parse AI response JSON: {ai_content[:200]}')
+                            continue
+                        
+                    except Exception as e:
+                        print(f'[ERROR] AI generation failed: {type(e).__name__} - {str(e)}')
+                        continue
                     
                     cur.execute('''
                         INSERT INTO generated_emails (
@@ -689,9 +870,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 pain_doc_id = evt['pain_doc_id']
                 default_tone = evt.get('default_tone', 'professional')
                 email_template_examples = evt.get('email_template_examples', '')
+                logo_url = evt.get('logo_url', '')
                 
                 print(f'[DEBUG] Reading program from: {program_doc_id}')
                 program_text = read_google_doc(program_doc_id)
+                
+                event_date = ''
+                event_venue = ''
+                try:
+                    meta_response = read_google_doc(program_doc_id, sheet_name='Meta')
+                    if meta_response and 'meta' in meta_response:
+                        meta = meta_response['meta']
+                        event_date = meta.get('date', '')
+                        event_venue = meta.get('venue', '')
+                        print(f'[DEBUG] Extracted meta: date={event_date}, venue={event_venue}')
+                except Exception as e:
+                    print(f'[DEBUG] Failed to read Meta sheet: {e}')
                 
                 print(f'[DEBUG] Reading pain points from: {pain_doc_id}')
                 pain_points_text = read_google_doc(pain_doc_id)
@@ -772,9 +966,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 print(f'[AI] Using provider={provider}, model={ai_model}, api_url={api_url}')
                 
                 generated_count = 0
+                skipped_count = 0
+                
                 for row in rows:
                     title = row['title']
                     content_type_id = row['content_type_id']
+                    
+                    # Проверка на дубли: если письмо с таким заголовком уже существует
+                    cur.execute('''
+                        SELECT COUNT(*) as count FROM generated_emails
+                        WHERE event_list_id = %s AND subject = %s
+                    ''', (event_list_id, title))
+                    existing = cur.fetchone()
+                    
+                    if existing and existing['count'] > 0:
+                        print(f'[SKIP] Email with subject "{title}" already exists')
+                        skipped_count += 1
+                        continue
                     
                     cur.execute('''
                         SELECT html_template, subject_template, instructions
@@ -801,10 +1009,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                     tone_desc = tone_descriptions.get(default_tone, default_tone)
                     
+                    logo_instruction = ''
+                    if logo_url:
+                        logo_instruction = f'\n   - В шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
+                    
+                    date_info = ''
+                    if event_date:
+                        date_info = f'\nДата проведения: {event_date}'
+                        if event_venue:
+                            date_info += f'\nМесто: {event_venue}'
+                    
                     prompt = f"""Ты - эксперт по email-маркетингу. Твоя задача - создать эффективное письмо для рассылки.
 
 КОНТЕКСТ МЕРОПРИЯТИЯ:
-Название: {evt.get('name', '')}
+Название: {evt.get('name', '')}{date_info}
 Тон общения: {tone_desc}
 
 ПРОГРАММА МЕРОПРИЯТИЯ:
@@ -827,11 +1045,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 4. Создай HTML-письмо:
    - Начни с яркого крючка (боль или выгода)
    - Покажи как программа решает эту боль
-   - Используй конкретные темы из программы
+   - Используй конкретные темы из программы{logo_instruction}
    - Добавь призыв к действию
    - Соблюдай тон: {tone_desc}
    - Структурируй текст: заголовки, абзацы, списки
    - HTML должен быть валидным и адаптивным
+   - ОБЯЗАТЕЛЬНО используй дату мероприятия в тексте письма: {event_date if event_date else 'дата в программе'}
 
 ФОРМАТ ОТВЕТА (строго JSON):
 {{"subject": "цепляющая тема письма", "html": "<html><body>...полный HTML код письма...</body></html>"}}
@@ -931,12 +1150,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                 
                 conn.commit()
-                print(f'[CONTENT_PLAN] Generated {generated_count} emails')
+                print(f'[CONTENT_PLAN] Generated {generated_count} emails, skipped {skipped_count} duplicates')
                 
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'generated_count': generated_count})
+                    'body': json.dumps({
+                        'generated_count': generated_count,
+                        'skipped_count': skipped_count,
+                        'message': f'Создано {generated_count} писем' + (f', пропущено дублей: {skipped_count}' if skipped_count > 0 else '')
+                    })
                 }
             
             elif action == 'generate_single_email':
@@ -954,7 +1177,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 print(f'[SINGLE_EMAIL] Generating for title="{title}", type="{content_type_name}"')
                 
-                cur.execute('SELECT program_doc_id, pain_doc_id FROM events WHERE id = %s', (event_id,))
+                cur.execute('SELECT program_doc_id, pain_doc_id, logo_url FROM events WHERE id = %s', (event_id,))
                 event_row = cur.fetchone()
                 
                 if not event_row:
@@ -966,9 +1189,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 program_doc_id = event_row['program_doc_id'] or ''
                 pain_doc_id = event_row['pain_doc_id'] or ''
+                logo_url = event_row.get('logo_url', '')
                 
                 program_text = read_google_doc(program_doc_id) if program_doc_id else ''
                 pain_text = read_google_doc(pain_doc_id) if pain_doc_id else ''
+                
+                event_date = ''
+                event_venue = ''
+                if program_doc_id:
+                    try:
+                        meta_response = read_google_doc(program_doc_id, sheet_name='Meta')
+                        if meta_response and 'meta' in meta_response:
+                            meta = meta_response['meta']
+                            event_date = meta.get('date', '')
+                            event_venue = meta.get('venue', '')
+                            print(f'[DEBUG] Extracted meta: date={event_date}, venue={event_venue}')
+                    except Exception as e:
+                        print(f'[DEBUG] Failed to read Meta sheet: {e}')
                 
                 cur.execute('SELECT id FROM content_types WHERE event_id = %s AND name = %s', (event_id, content_type_name))
                 content_type_row = cur.fetchone()
@@ -1048,9 +1285,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
                     }
                 
+                logo_instruction = ''
+                if logo_url:
+                    logo_instruction = f'\nВ шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
+                
+                date_info = ''
+                if event_date:
+                    date_info = f'\nДата проведения: {event_date}'
+                    if event_venue:
+                        date_info += f' | Место: {event_venue}'
+                
                 prompt = f"""
 Тема письма: {title}
-Инструкции для генерации: {instructions}
+Инструкции для генерации: {instructions}{date_info}
 
 Программа мероприятия:
 {program_text[:3000]}
@@ -1059,7 +1306,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 {pain_text[:2000]}
 
 Шаблон HTML:
-{html_template[:1000]}
+{html_template[:1000]}{logo_instruction}
+
+ВАЖНО: Обязательно используй дату мероприятия ({event_date if event_date else 'указана в программе'}) в тексте письма.
 
 Создай письмо на основе этих данных. Верни JSON:
 {{
@@ -1243,10 +1492,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'list_id required'})
                     }
                 
+                print(f'[GENERATE_DRAFTS] Starting for list_id={list_id}')
+                
                 cur.execute('''
-                    SELECT content_type_ids, content_type_order
-                    FROM event_mailing_lists
-                    WHERE id = %s
+                    SELECT eml.content_type_ids, eml.event_id, eml.ai_provider, eml.ai_model,
+                           e.program_doc_id, e.pain_doc_id, e.logo_url, e.name, e.default_tone, e.email_template_examples
+                    FROM event_mailing_lists eml
+                    JOIN events e ON eml.event_id = e.id
+                    WHERE eml.id = %s
                 ''', (list_id,))
                 
                 mailing_list = cur.fetchone()
@@ -1258,28 +1511,218 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 content_type_ids = mailing_list['content_type_ids']
+                event_id = mailing_list['event_id']
+                program_doc_id = mailing_list['program_doc_id']
+                pain_doc_id = mailing_list['pain_doc_id']
+                logo_url = mailing_list.get('logo_url', '')
+                event_name = mailing_list.get('name', '')
+                default_tone = mailing_list.get('default_tone', 'professional')
+                email_template_examples = mailing_list.get('email_template_examples', '')
+                ai_model = mailing_list.get('ai_model', 'gpt-4o-mini')
+                
+                print(f'[DEBUG] Reading program from: {program_doc_id}')
+                program_text = read_google_doc(program_doc_id)
+                
+                event_date = ''
+                event_venue = ''
+                try:
+                    meta_response = read_google_doc(program_doc_id, sheet_name='Meta')
+                    if meta_response and 'meta' in meta_response:
+                        meta = meta_response['meta']
+                        event_date = meta.get('date', '')
+                        event_venue = meta.get('venue', '')
+                        print(f'[DEBUG] Extracted meta: date={event_date}, venue={event_venue}')
+                except Exception as e:
+                    print(f'[DEBUG] Failed to read Meta sheet: {e}')
+                
+                print(f'[DEBUG] Reading pain points from: {pain_doc_id}')
+                pain_points_text = read_google_doc(pain_doc_id)
+                
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY')
+                openai_key = os.environ.get('OPENAI_API_KEY')
+                
+                if openrouter_key:
+                    api_key = openrouter_key
+                    api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                    provider = 'openrouter'
+                elif openai_key:
+                    api_key = openai_key
+                    api_url = 'https://api.openai.com/v1/chat/completions'
+                    provider = 'openai'
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
+                    }
+                
+                print(f'[AI] Using provider={provider}, model={ai_model}')
+                
+                tone_descriptions = {
+                    'professional': 'профессиональный и деловой',
+                    'friendly': 'дружелюбный и неформальный',
+                    'enthusiastic': 'энергичный и вдохновляющий',
+                    'formal': 'формальный и официальный',
+                    'casual': 'лёгкий и непринужденный'
+                }
+                tone_desc = tone_descriptions.get(default_tone, default_tone)
                 
                 created_count = 0
+                
                 for content_type_id in content_type_ids:
                     cur.execute('''
-                        INSERT INTO generated_emails 
-                        (event_list_id, content_type_id, subject, html_body, status)
-                        VALUES (%s, %s, %s, %s, %s)
-                    ''', (
-                        list_id,
-                        content_type_id,
-                        f'Черновик письма для типа {content_type_id}',
-                        f'<p>Это автоматически созданный черновик для типа контента {content_type_id}</p>',
-                        'draft'
-                    ))
-                    created_count += 1
+                        SELECT et.html_template, et.subject_template, et.instructions,
+                               ct.name as content_type_name
+                        FROM email_templates et
+                        JOIN content_types ct ON et.content_type_id = ct.id
+                        WHERE et.event_id = %s AND et.content_type_id = %s
+                    ''', (event_id, content_type_id))
+                    
+                    template_row = cur.fetchone()
+                    if not template_row:
+                        print(f'[WARN] No template for content_type_id={content_type_id}')
+                        continue
+                    
+                    instructions = template_row['instructions'] or ''
+                    content_type_name = template_row['content_type_name']
+                    
+                    logo_instruction = ''
+                    if logo_url:
+                        logo_instruction = f'\n   - В шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
+                    
+                    date_info = ''
+                    if event_date:
+                        date_info = f'\nДата проведения: {event_date}'
+                        if event_venue:
+                            date_info += f'\nМесто: {event_venue}'
+                    
+                    prompt = f"""Ты - эксперт по email-маркетингу. Твоя задача - создать эффективное письмо для рассылки.
+
+КОНТЕКСТ МЕРОПРИЯТИЯ:
+Название: {event_name}{date_info}
+Тон общения: {tone_desc}
+
+ПРОГРАММА МЕРОПРИЯТИЯ:
+{program_text[:3000]}
+
+БОЛИ ЦЕЛЕВОЙ АУДИТОРИИ:
+{pain_points_text[:2000]}
+
+ЗАДАНИЕ НА ПИСЬМО:
+Тип контента: {content_type_name}
+Инструкции: {instructions}
+
+ПРИМЕРЫ СТИЛЯ ПИСЕМ (если есть):
+{email_template_examples[:1000] if email_template_examples else 'Используй профессиональный стиль email-маркетинга'}
+
+ТРЕБОВАНИЯ:
+1. Изучи программу мероприятия и выбери темы, максимально соответствующие типу письма "{content_type_name}"
+2. Определи из списка болей ЦА те, которые решаются выбранными темами программы
+3. Создай цепляющую тему письма (subject) длиной до 60 символов, которая отражает суть и привлекает внимание
+4. Создай HTML-письмо:
+   - Начни с яркого крючка (боль или выгода)
+   - Покажи как программа решает эту боль
+   - Используй конкретные темы из программы{logo_instruction}
+   - Добавь призыв к действию
+   - Соблюдай тон: {tone_desc}
+   - Структурируй текст: заголовки, абзацы, списки
+   - HTML должен быть валидным и адаптивным
+   - ОБЯЗАТЕЛЬНО используй дату мероприятия в тексте письма: {event_date if event_date else 'дата в программе'}
+
+ФОРМАТ ОТВЕТА (строго JSON):
+{{"subject": "цепляющая тема письма", "html": "<html><body>...полный HTML код письма...</body></html>"}}
+
+Верни ТОЛЬКО JSON, без дополнительных комментариев."""
+                    
+                    print(f'[AI] Generating for type: {content_type_name}')
+                    
+                    try:
+                        request_payload = {
+                            'model': ai_model,
+                            'messages': [
+                                {
+                                    'role': 'system', 
+                                    'content': f'Ты профессиональный email-маркетолог. Стиль общения: {tone_desc}. Отвечаешь строго в формате JSON.'
+                                },
+                                {
+                                    'role': 'user', 
+                                    'content': prompt
+                                }
+                            ],
+                            'temperature': 0.8,
+                            'max_tokens': 4000
+                        }
+                        
+                        req = urllib.request.Request(
+                            api_url,
+                            data=json.dumps(request_payload).encode('utf-8'),
+                            headers={
+                                'Content-Type': 'application/json',
+                                'Authorization': f'Bearer {api_key}'
+                            }
+                        )
+                        
+                        with urllib.request.urlopen(req, timeout=60) as response:
+                            result = json.loads(response.read().decode('utf-8'))
+                            content = result['choices'][0]['message']['content']
+                            
+                            content = content.strip()
+                            if content.startswith('```json'):
+                                content = content[7:]
+                            if content.startswith('```'):
+                                content = content[3:]
+                            if content.endswith('```'):
+                                content = content[:-3]
+                            content = content.strip()
+                            
+                            try:
+                                email_data = json.loads(content)
+                            except json.JSONDecodeError:
+                                import re
+                                fixed_content = re.sub(r'\\(?![ntr"\\])', '', content)
+                                email_data = json.loads(fixed_content)
+                            
+                            generated_subject = email_data.get('subject', f'Письмо: {content_type_name}')
+                            generated_html = email_data.get('html', '<p>Ошибка генерации</p>')
+                            
+                            cur.execute('''
+                                INSERT INTO generated_emails 
+                                (event_list_id, content_type_id, subject, html_body, status)
+                                VALUES (%s, %s, %s, %s, %s)
+                            ''', (
+                                list_id,
+                                content_type_id,
+                                generated_subject,
+                                generated_html,
+                                'draft'
+                            ))
+                            created_count += 1
+                            print(f'[SUCCESS] Generated email for {content_type_name}')
+                    
+                    except Exception as gen_error:
+                        print(f'[ERROR] Failed to generate for {content_type_name}: {gen_error}')
+                        cur.execute('''
+                            INSERT INTO generated_emails 
+                            (event_list_id, content_type_id, subject, html_body, status)
+                            VALUES (%s, %s, %s, %s, %s)
+                        ''', (
+                            list_id,
+                            content_type_id,
+                            f'Ошибка генерации: {content_type_name}',
+                            f'<p>Не удалось сгенерировать письмо: {str(gen_error)}</p>',
+                            'draft'
+                        ))
+                        created_count += 1
                 
                 conn.commit()
                 
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'count': created_count, 'message': f'Created {created_count} draft emails'})
+                    'body': json.dumps({
+                        'count': created_count,
+                        'message': f'Сгенерировано {created_count} писем'
+                    })
                 }
             
             elif action == 'get_drafts':
