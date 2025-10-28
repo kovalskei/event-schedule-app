@@ -630,6 +630,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 ai_api_key = os.environ.get('OPENAI_API_KEY')
                 
+                # Получаем AI настройки из mailing_list
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY')
+                openai_key = os.environ.get('OPENAI_API_KEY')
+                
+                if openrouter_key:
+                    api_key = openrouter_key
+                    api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                elif openai_key:
+                    api_key = openai_key
+                    api_url = 'https://api.openai.com/v1/chat/completions'
+                else:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'No AI API key configured'})
+                    }
+                
                 created_count = 0
                 skipped_count = 0
                 for content_type_id in content_type_ids:
@@ -648,12 +665,72 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     html_template = template_row['html_template'] or ''
                     subject_template = template_row['subject_template'] or 'Новое письмо'
                     instructions = template_row['instructions'] or ''
+                    template_name = template_row['name'] or 'Draft'
                     
-                    print(f'[TEMPLATE] Using template substitution for content_type={content_type_id}')
-                    final_html = html_template.replace('{program_topics}', '\n'.join(program_topics))
-                    final_html = final_html.replace('{pain_points}', '\n'.join(pain_points))
-                    final_subject = subject_template.replace('{program_topics}', '\n'.join(program_topics))
-                    final_subject = final_subject.replace('{pain_points}', '\n'.join(pain_points))
+                    if not instructions:
+                        print(f'[SKIP] No instructions for template {template_name}')
+                        continue
+                    
+                    print(f'[AI_DRAFT] Generating draft using AI for content_type={content_type_id}')
+                    
+                    # Формируем промпт с контекстом
+                    user_prompt = f"""Сгенерируй письмо на основе следующих данных:
+
+ИНСТРУКЦИИ ДЛЯ ГЕНЕРАЦИИ:
+{instructions}
+
+ПРОГРАММА МЕРОПРИЯТИЯ:
+{program_text[:15000]}
+
+БОЛИ И ЗАПРОСЫ АУДИТОРИИ (используй выборочно, только релевантные):
+{pain_points_text[:15000]}
+
+Требования:
+1. Следуй ИНСТРУКЦИЯМ для выбора контента и тона
+2. Используй только релевантные фрагменты из болей
+3. Создай уникальный заголовок и содержание
+4. Верни JSON: {{"subject": "заголовок", "html": "html-контент"}}
+"""
+                    
+                    try:
+                        ai_response = requests.post(
+                            api_url,
+                            headers={
+                                'Authorization': f'Bearer {api_key}',
+                                'Content-Type': 'application/json'
+                            },
+                            json={
+                                'model': 'gpt-4o-mini',
+                                'messages': [
+                                    {'role': 'system', 'content': 'Ты эксперт по email-маркетингу для бизнес-мероприятий. Создаёшь персонализированные письма на основе инструкций.'},
+                                    {'role': 'user', 'content': user_prompt}
+                                ],
+                                'temperature': 0.8,
+                                'max_tokens': 2000
+                            },
+                            timeout=60
+                        )
+                        
+                        if ai_response.status_code != 200:
+                            print(f'[ERROR] AI API error: {ai_response.status_code} - {ai_response.text}')
+                            continue
+                        
+                        ai_content = ai_response.json()['choices'][0]['message']['content']
+                        
+                        # Парсим JSON из ответа AI
+                        import re
+                        json_match = re.search(r'\{.*\}', ai_content, re.DOTALL)
+                        if json_match:
+                            result = json.loads(json_match.group())
+                            final_subject = result.get('subject', template_name)
+                            final_html = result.get('html', '')
+                        else:
+                            print(f'[ERROR] Failed to parse AI response JSON')
+                            continue
+                        
+                    except Exception as e:
+                        print(f'[ERROR] AI generation failed: {type(e).__name__} - {str(e)}')
+                        continue
                     
                     cur.execute('''
                         INSERT INTO generated_emails (
