@@ -1467,19 +1467,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 tone_desc = tone_descriptions.get(default_tone, default_tone)
                 
                 created_count = 0
-                skipped_count = 0
                 
                 for content_type_id in content_type_ids:
-                    cur.execute('''
-                        SELECT COUNT(*) as count FROM generated_emails
-                        WHERE event_list_id = %s AND content_type_id = %s
-                    ''', (list_id, content_type_id))
-                    existing = cur.fetchone()
-                    
-                    if existing and existing['count'] > 0:
-                        skipped_count += 1
-                        continue
-                    
                     cur.execute('''
                         SELECT et.html_template, et.subject_template, et.instructions,
                                ct.name as content_type_name
@@ -1491,7 +1480,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     template_row = cur.fetchone()
                     if not template_row:
                         print(f'[WARN] No template for content_type_id={content_type_id}')
-                        skipped_count += 1
                         continue
                     
                     instructions = template_row['instructions'] or ''
@@ -1631,9 +1619,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                     'body': json.dumps({
-                        'count': created_count, 
-                        'skipped': skipped_count,
-                        'message': f'Generated {created_count} emails, skipped {skipped_count} (already exist)'
+                        'count': created_count,
+                        'message': f'Сгенерировано {created_count} писем'
                     })
                 }
             
