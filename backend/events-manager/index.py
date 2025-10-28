@@ -633,20 +633,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 created_count = 0
                 skipped_count = 0
                 for content_type_id in content_type_ids:
-                    # Проверяем, есть ли уже черновик для этого content_type
-                    cur.execute('''
-                        SELECT id FROM generated_emails
-                        WHERE event_list_id = %s AND content_type_id = %s AND status = 'draft'
-                        LIMIT 1
-                    ''', (list_id, content_type_id))
-                    
-                    existing_draft = cur.fetchone()
-                    
-                    if existing_draft:
-                        print(f'[SKIP] Draft already exists for list_id={list_id}, content_type={content_type_id}')
-                        skipped_count += 1
-                        continue
-                    
                     cur.execute('''
                         SELECT html_template, subject_template, instructions, name
                         FROM email_templates
