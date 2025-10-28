@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,8 +71,6 @@ export default function EventSettingsDialog({
     subject_template: '',
     instructions: '',
   });
-  const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
-  const templateFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open && eventId) {
@@ -234,119 +232,6 @@ export default function EventSettingsDialog({
     } catch (error: any) {
       toast({
         title: 'Ошибка создания шаблона',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEditTemplate = (template: EmailTemplate) => {
-    setEditingTemplate(template);
-    setNewTemplate({
-      content_type_id: template.content_type_id.toString(),
-      name: template.name,
-      html_template: template.html_template,
-      subject_template: template.subject_template,
-      instructions: template.instructions,
-    });
-    
-    setTimeout(() => {
-      templateFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  };
-
-  const handleUpdateTemplate = async () => {
-    if (!editingTemplate || !eventId) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update_email_template',
-          template_id: editingTemplate.id,
-          ...newTemplate,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      toast({
-        title: 'Шаблон обновлён',
-        description: newTemplate.name,
-      });
-
-      setNewTemplate({
-        content_type_id: '',
-        name: '',
-        html_template: '',
-        subject_template: '',
-        instructions: '',
-      });
-      setEditingTemplate(null);
-      loadEventSettings();
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка обновления шаблона',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingTemplate(null);
-    setNewTemplate({
-      content_type_id: '',
-      name: '',
-      html_template: '',
-      subject_template: '',
-      instructions: '',
-    });
-  };
-
-  const handleDeleteTemplate = async (templateId: number, templateName: string) => {
-    const confirmed = window.confirm(
-      `Удалить шаблон "${templateName}"?\n\nЭто действие нельзя отменить.`
-    );
-    
-    if (!confirmed) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'delete_email_template',
-          template_id: templateId,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      toast({
-        title: 'Шаблон удалён',
-        description: templateName,
-      });
-
-      loadEventSettings();
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка удаления',
         description: error.message,
         variant: 'destructive',
       });
@@ -673,24 +558,6 @@ export default function EventSettingsDialog({
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditTemplate(template)}
-                            disabled={loading}
-                          >
-                            <Icon name="Edit" className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteTemplate(template.id, template.name)}
-                            disabled={loading}
-                          >
-                            <Icon name="Trash2" className="w-4 h-4 text-red-500" />
-                          </Button>
-                        </div>
                       </div>
                     </div>
                   ))}
@@ -703,22 +570,8 @@ export default function EventSettingsDialog({
                 </div>
 
                 {contentTypes.length > 0 ? (
-                  <div ref={templateFormRef} className="border-t pt-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">
-                        {editingTemplate ? 'Редактировать шаблон' : 'Добавить новый шаблон'}
-                      </h3>
-                      {editingTemplate && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleCancelEdit}
-                        >
-                          <Icon name="X" className="w-4 h-4 mr-2" />
-                          Отмена
-                        </Button>
-                      )}
-                    </div>
+                  <div className="border-t pt-4 space-y-3">
+                    <h3 className="font-semibold">Добавить новый шаблон</h3>
                     
                     <div>
                       <Label htmlFor="template_content_type">Тип контента</Label>
@@ -782,22 +635,10 @@ export default function EventSettingsDialog({
                       />
                     </div>
 
-                    {editingTemplate ? (
-                      <div className="flex gap-2">
-                        <Button onClick={handleUpdateTemplate} disabled={loading}>
-                          <Icon name="Save" className="w-4 h-4 mr-2" />
-                          Обновить шаблон
-                        </Button>
-                        <Button variant="outline" onClick={handleCancelEdit}>
-                          Отмена
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button onClick={handleCreateTemplate} disabled={loading}>
-                        <Icon name="Plus" className="w-4 h-4 mr-2" />
-                        Создать шаблон
-                      </Button>
-                    )}
+                    <Button onClick={handleCreateTemplate} disabled={loading}>
+                      <Icon name="Plus" className="w-4 h-4 mr-2" />
+                      Создать шаблон
+                    </Button>
                   </div>
                 ) : (
                   <div className="border-t pt-4 text-center text-gray-500">

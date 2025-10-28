@@ -380,58 +380,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'template_id': template_id, 'message': 'Email template created'})
                 }
             
-            elif action == 'delete_email_template':
-                template_id = body_data.get('template_id')
-                
-                if not template_id:
-                    return {
-                        'statusCode': 400,
-                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'template_id required'})
-                    }
-                
-                cur.execute('DELETE FROM email_templates WHERE id = %s', (template_id,))
-                conn.commit()
-                
-                return {
-                    'statusCode': 200,
-                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'message': 'Email template deleted'})
-                }
-            
-            elif action == 'update_email_template':
-                template_id = body_data.get('template_id')
-                content_type_id = body_data.get('content_type_id')
-                name = body_data.get('name', '')
-                html_template = body_data.get('html_template', '')
-                subject_template = body_data.get('subject_template', '')
-                instructions = body_data.get('instructions', '')
-                
-                if not template_id:
-                    return {
-                        'statusCode': 400,
-                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'template_id required'})
-                    }
-                
-                cur.execute('''
-                    UPDATE email_templates SET
-                        content_type_id = %s,
-                        name = %s,
-                        html_template = %s,
-                        subject_template = %s,
-                        instructions = %s
-                    WHERE id = %s
-                ''', (content_type_id, name, html_template, subject_template, instructions, template_id))
-                
-                conn.commit()
-                
-                return {
-                    'statusCode': 200,
-                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'message': 'Email template updated'})
-                }
-            
             elif action == 'update_mailing_list_settings':
                 list_id = body_data.get('list_id')
                 content_type_ids = body_data.get('content_type_ids', [])
