@@ -6,25 +6,11 @@ import urllib.parse
 import csv
 from io import StringIO
 
-def extract_meta_from_sheets(csv_content: str) -> Dict[str, str]:
-    '''Извлекает метаданные из листа Meta в формате A (ключ) -> B (значение)'''
-    meta = {}
-    csv_reader = csv.reader(StringIO(csv_content))
-    
-    for row in csv_reader:
-        if len(row) >= 2 and row[0] and row[1]:
-            key = row[0].strip().lower()
-            value = row[1].strip()
-            if key and value:
-                meta[key] = value
-    
-    return meta
-
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Business: Читает содержимое Google Docs или Google Sheets по ID или ссылке
-    Args: event - dict с httpMethod, queryStringParameters (doc_id или url, sheet_name)
-    Returns: HTTP response с текстом документа/таблицы и метаданными
+    Args: event - dict с httpMethod, queryStringParameters (doc_id или url)
+    Returns: HTTP response с текстом документа/таблицы
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -44,7 +30,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         params = event.get('queryStringParameters', {})
         doc_id = params.get('doc_id', '')
         doc_url = params.get('url', '')
-        sheet_name = params.get('sheet_name', '')
         doc_type = 'docs'
         
         if doc_url:
@@ -72,10 +57,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         try:
             if doc_type == 'sheets':
-                if sheet_name:
-                    export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(sheet_name)}'
-                else:
-                    export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+                export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
                 
                 req = urllib.request.Request(export_url)
                 req.add_header('User-Agent', 'Mozilla/5.0')
@@ -83,26 +65,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 with urllib.request.urlopen(req) as response:
                     csv_content = response.read().decode('utf-8')
                     
-                    result = {
-                        'doc_id': doc_id,
-                        'type': 'sheets',
-                        'content': csv_content
-                    }
+                    csv_reader = csv.reader(StringIO(csv_content))
+                    text_lines = []
                     
-                    if sheet_name and sheet_name.lower() == 'meta':
-                        meta = extract_meta_from_sheets(csv_content)
-                        result['meta'] = meta
-                    else:
-                        csv_reader = csv.reader(StringIO(csv_content))
-                        text_lines = []
-                        for row in csv_reader:
-                            text_lines.append('\t'.join(row))
-                        result['content'] = '\n'.join(text_lines)
+                    for row in csv_reader:
+                        text_lines.append('\t'.join(row))
+                    
+                    full_text = '\n'.join(text_lines)
                     
                     return {
                         'statusCode': 200,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps(result)
+                        'body': json.dumps({'doc_id': doc_id, 'type': 'sheets', 'content': full_text})
                     }
             else:
                 export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=txt'
