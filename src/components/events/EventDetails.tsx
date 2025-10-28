@@ -3,9 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/ui/icon';
+import { useToast } from '@/hooks/use-toast';
 import MailingListSettings from './MailingListSettings';
 import DraftsViewer from './DraftsViewer';
 import ContentPlanDialog from './ContentPlanDialog';
+
+const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 
 interface Event {
   id: number;
@@ -55,10 +58,12 @@ interface EventDetailsProps {
 }
 
 export default function EventDetails({ event, mailingLists, contentTypes, onBack, onLinkList, onEditSettings, onUpdate }: EventDetailsProps) {
+  const { toast } = useToast();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [contentPlanOpen, setContentPlanOpen] = useState(false);
   const [selectedList, setSelectedList] = useState<MailingList | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleOpenSettings = (list: MailingList) => {
     setSelectedList(list);
@@ -68,6 +73,47 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
   const handleOpenDrafts = (list: MailingList) => {
     setSelectedList(list);
     setDraftsOpen(true);
+  };
+
+  const handleDeleteList = async (listId: number, listName: string) => {
+    const confirmed = window.confirm(
+      `Удалить список рассылки "${listName}"?\n\nВнимание: Это удалит настройки и все черновики, но не удалит список в UniSender.`
+    );
+    
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(EVENTS_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_mailing_list',
+          list_id: listId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: 'Список удалён',
+        description: 'Список рассылки и все черновики удалены',
+      });
+
+      onUpdate();
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка удаления',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -178,14 +224,24 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
                       </div>
                       <p className="text-sm text-gray-500">ID: {list.unisender_list_id}</p>
                     </div>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleOpenSettings(list)}
-                    >
-                      <Icon name="Settings" className="w-4 h-4 mr-2" />
-                      Настроить
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleOpenSettings(list)}
+                      >
+                        <Icon name="Settings" className="w-4 h-4 mr-2" />
+                        Настроить
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={() => handleDeleteList(list.id, list.unisender_list_name)}
+                        disabled={deleting}
+                      >
+                        <Icon name="Trash2" className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-2">

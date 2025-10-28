@@ -240,6 +240,47 @@ export default function EventSettingsDialog({
     }
   };
 
+  const handleDeleteTemplate = async (templateId: number, templateName: string) => {
+    const confirmed = window.confirm(
+      `Удалить шаблон "${templateName}"?\n\nЭто действие нельзя отменить.`
+    );
+    
+    if (!confirmed) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(EVENTS_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_email_template',
+          template_id: templateId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: 'Шаблон удалён',
+        description: templateName,
+      });
+
+      loadEventSettings();
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка удаления',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !event) return;
@@ -558,6 +599,14 @@ export default function EventSettingsDialog({
                             </div>
                           )}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteTemplate(template.id, template.name)}
+                          disabled={loading}
+                        >
+                          <Icon name="Trash2" className="w-4 h-4 text-red-500" />
+                        </Button>
                       </div>
                     </div>
                   ))}

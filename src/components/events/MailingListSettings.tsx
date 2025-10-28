@@ -232,50 +232,6 @@ export default function MailingListSettings({
     });
   };
 
-  const handleDelete = async () => {
-    if (!mailingList) return;
-    
-    const confirmed = window.confirm(
-      `Удалить список рассылки "${mailingList.unisender_list_name}"?\n\nВнимание: Это удалит настройки и все черновики, но не удалит список в UniSender.`
-    );
-    
-    if (!confirmed) return;
-
-    setLoading(true);
-    try {
-      const res = await fetch(EVENTS_MANAGER_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'delete_mailing_list',
-          list_id: mailingList.id,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      toast({
-        title: 'Список удалён',
-        description: 'Список рассылки и все черновики удалены',
-      });
-
-      onUpdate();
-      onOpenChange(false);
-    } catch (error: any) {
-      toast({
-        title: 'Ошибка удаления',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleTest = async () => {
     if (!mailingList) return;
 
@@ -653,14 +609,6 @@ export default function MailingListSettings({
           >
             <Icon name="Send" className="w-4 h-4 mr-2" />
             Тест
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDelete}
-            disabled={loading}
-          >
-            <Icon name="Trash2" className="w-4 h-4 mr-2" />
-            Удалить список
           </Button>
           <div className="flex-1" />
           <Button variant="outline" onClick={() => onOpenChange(false)}>
