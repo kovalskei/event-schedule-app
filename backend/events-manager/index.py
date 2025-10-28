@@ -1392,11 +1392,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    SELECT eml.content_type_ids, eml.content_type_order, eml.event_id,
-                           e.program_doc_id, e.pain_doc_id, e.logo_url
-                    FROM event_mailing_lists eml
-                    JOIN events e ON eml.event_id = e.id
-                    WHERE eml.id = %s
+                    SELECT content_type_ids, content_type_order
+                    FROM event_mailing_lists
+                    WHERE id = %s
                 ''', (list_id,))
                 
                 mailing_list = cur.fetchone()
@@ -1408,222 +1406,28 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 content_type_ids = mailing_list['content_type_ids']
-                event_id = mailing_list['event_id']
-                program_doc_id = mailing_list['program_doc_id']
-                pain_doc_id = mailing_list['pain_doc_id']
-                logo_url = mailing_list.get('logo_url')
-                
-                program_text = ''
-                pain_text = ''
-                event_date = None
-                event_venue = None
-                
-                if program_doc_id:
-                    docs_url = 'https://functions.poehali.dev/4df54bd9-8e52-46a4-a000-7cf55c0fd37d'
-                    try:
-                        docs_req = urllib.request.Request(
-                            f'{docs_url}?doc_id={program_doc_id}&sheet_name=Program',
-                            headers={'Accept': 'application/json'}
-                        )
-                        with urllib.request.urlopen(docs_req, timeout=30) as docs_response:
-                            docs_data = json.loads(docs_response.read().decode('utf-8'))
-                            program_text = docs_data.get('content', '')
-                        
-                        meta_req = urllib.request.Request(
-                            f'{docs_url}?doc_id={program_doc_id}&sheet_name=Meta',
-                            headers={'Accept': 'application/json'}
-                        )
-                        with urllib.request.urlopen(meta_req, timeout=30) as meta_response:
-                            meta_data = json.loads(meta_response.read().decode('utf-8'))
-                            meta_content = meta_data.get('content', '')
-                            meta_dict = extract_meta_from_csv(meta_content)
-                            event_date = meta_dict.get('date')
-                            event_venue = meta_dict.get('venue')
-                    except:
-                        pass
-                
-                if pain_doc_id:
-                    docs_url = 'https://functions.poehali.dev/4df54bd9-8e52-46a4-a000-7cf55c0fd37d'
-                    try:
-                        docs_req = urllib.request.Request(
-                            f'{docs_url}?doc_id={pain_doc_id}&sheet_name=Pain',
-                            headers={'Accept': 'application/json'}
-                        )
-                        with urllib.request.urlopen(docs_req, timeout=30) as docs_response:
-                            docs_data = json.loads(docs_response.read().decode('utf-8'))
-                            pain_text = docs_data.get('content', '')
-                    except:
-                        pass
-                
-                cur.execute('''
-                    SELECT ai_model FROM event_mailing_lists WHERE id = %s
-                ''', (list_id,))
-                ai_settings = cur.fetchone()
-                ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
-                
-                openrouter_key = os.environ.get('OPENROUTER_API_KEY')
-                openai_key = os.environ.get('OPENAI_API_KEY')
-                
-                if openrouter_key:
-                    api_key = openrouter_key
-                    api_url = 'https://openrouter.ai/api/v1/chat/completions'
-                elif openai_key:
-                    api_key = openai_key
-                    api_url = 'https://api.openai.com/v1/chat/completions'
-                else:
-                    return {
-                        'statusCode': 500,
-                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
-                    }
                 
                 created_count = 0
-                skipped_count = 0
-                
                 for content_type_id in content_type_ids:
                     cur.execute('''
-                        SELECT COUNT(*) as count FROM generated_emails
-                        WHERE event_list_id = %s AND content_type_id = %s
-                    ''', (list_id, content_type_id))
-                    existing = cur.fetchone()
-                    
-                    if existing and existing['count'] > 0:
-                        skipped_count += 1
-                        continue
-                    
-                    cur.execute('''
-                        SELECT et.html_template, et.subject_template, et.instructions,
-                               ct.name as content_type_name
-                        FROM email_templates et
-                        JOIN content_types ct ON et.content_type_id = ct.id
-                        WHERE et.event_id = %s AND et.content_type_id = %s
-                    ''', (event_id, content_type_id))
-                    
-                    template_row = cur.fetchone()
-                    if not template_row:
-                        skipped_count += 1
-                        continue
-                    
-                    html_template = template_row['html_template'] or ''
-                    subject_template = template_row['subject_template'] or ''
-                    instructions = template_row['instructions'] or ''
-                    content_type_name = template_row['content_type_name']
-                    
-                    logo_instruction = ''
-                    if logo_url:
-                        logo_instruction = f'\nВ шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
-                    
-                    date_info = ''
-                    if event_date:
-                        date_info = f'\nДата проведения: {event_date}'
-                        if event_venue:
-                            date_info += f' | Место: {event_venue}'
-                    
-                    prompt = f"""
-Тип письма: {content_type_name}
-Инструкции для генерации: {instructions}{date_info}
-
-Программа мероприятия:
-{program_text[:3000]}
-
-Боли целевой аудитории:
-{pain_text[:2000]}
-
-Шаблон темы письма:
-{subject_template[:500]}
-
-Шаблон HTML:
-{html_template[:1000]}{logo_instruction}
-
-ВАЖНО: Обязательно используй дату мероприятия ({event_date if event_date else 'указана в программе'}) в тексте письма.
-
-Создай письмо на основе этих данных. Верни JSON:
-{{
-  "subject": "Тема письма",
-  "html": "<html>...</html>"
-}}
-"""
-                    
-                    request_payload = {
-                        'model': ai_model,
-                        'messages': [
-                            {'role': 'system', 'content': 'Ты - эксперт по email маркетингу. Создаёшь продающие письма для мероприятий.'},
-                            {'role': 'user', 'content': prompt}
-                        ],
-                        'temperature': 0.8,
-                        'max_tokens': 4000
-                    }
-                    
-                    try:
-                        req = urllib.request.Request(
-                            api_url,
-                            data=json.dumps(request_payload).encode('utf-8'),
-                            headers={
-                                'Content-Type': 'application/json',
-                                'Authorization': f'Bearer {api_key}'
-                            }
-                        )
-                        
-                        with urllib.request.urlopen(req, timeout=60) as response:
-                            result = json.loads(response.read().decode('utf-8'))
-                            content = result['choices'][0]['message']['content']
-                            
-                            content = content.strip()
-                            if content.startswith('```json'):
-                                content = content[7:]
-                            if content.startswith('```'):
-                                content = content[3:]
-                            if content.endswith('```'):
-                                content = content[:-3]
-                            content = content.strip()
-                            
-                            try:
-                                email_data = json.loads(content)
-                            except json.JSONDecodeError:
-                                import re
-                                fixed_content = re.sub(r'\\(?![ntr"\\])', '', content)
-                                email_data = json.loads(fixed_content)
-                            
-                            generated_subject = email_data.get('subject', f'Письмо: {content_type_name}')
-                            generated_html = email_data.get('html', '<p>Ошибка генерации</p>')
-                            
-                            cur.execute('''
-                                INSERT INTO generated_emails 
-                                (event_list_id, content_type_id, subject, html_body, status)
-                                VALUES (%s, %s, %s, %s, %s)
-                            ''', (
-                                list_id,
-                                content_type_id,
-                                generated_subject,
-                                generated_html,
-                                'draft'
-                            ))
-                            created_count += 1
-                    
-                    except Exception as gen_error:
-                        cur.execute('''
-                            INSERT INTO generated_emails 
-                            (event_list_id, content_type_id, subject, html_body, status)
-                            VALUES (%s, %s, %s, %s, %s)
-                        ''', (
-                            list_id,
-                            content_type_id,
-                            f'Ошибка генерации: {content_type_name}',
-                            f'<p>Не удалось сгенерировать письмо: {str(gen_error)}</p>',
-                            'draft'
-                        ))
-                        created_count += 1
+                        INSERT INTO generated_emails 
+                        (event_list_id, content_type_id, subject, html_body, status)
+                        VALUES (%s, %s, %s, %s, %s)
+                    ''', (
+                        list_id,
+                        content_type_id,
+                        f'Черновик письма для типа {content_type_id}',
+                        f'<p>Это автоматически созданный черновик для типа контента {content_type_id}</p>',
+                        'draft'
+                    ))
+                    created_count += 1
                 
                 conn.commit()
                 
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({
-                        'count': created_count, 
-                        'skipped': skipped_count,
-                        'message': f'Generated {created_count} emails, skipped {skipped_count} (already exist)'
-                    })
+                    'body': json.dumps({'count': created_count, 'message': f'Created {created_count} draft emails'})
                 }
             
             elif action == 'get_drafts':
