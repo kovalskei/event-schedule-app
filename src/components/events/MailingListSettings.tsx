@@ -200,9 +200,14 @@ export default function MailingListSettings({
         throw new Error(data.error);
       }
 
+      let description = `Создано: ${data.count || 0}`;
+      if (data.skipped && data.skipped > 0) {
+        description += `, пропущено дублей: ${data.skipped}`;
+      }
+
       toast({
         title: 'Черновики созданы',
-        description: data.message || `Создано ${data.count || 0} писем`,
+        description: description,
       });
 
       // Обновляем список мероприятий чтобы показать badge
