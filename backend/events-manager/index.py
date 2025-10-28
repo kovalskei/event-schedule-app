@@ -4,6 +4,7 @@ from typing import Dict, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import urllib.request
+import urllib.parse
 import csv
 from io import StringIO
 
@@ -42,7 +43,6 @@ def read_google_doc(url: str, sheet_name: str = '') -> Any:
         
         if doc_type == 'sheets':
             if sheet_name:
-                import urllib.parse
                 export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(sheet_name)}'
             else:
                 export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
