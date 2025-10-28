@@ -7,8 +7,22 @@ import urllib.request
 import csv
 from io import StringIO
 
-def read_google_doc(url: str) -> str:
-    """Читает Google Docs или Sheets напрямую"""
+def extract_meta_from_csv(csv_content: str) -> Dict[str, str]:
+    """Извлекает метаданные из CSV в формате A (ключ) -> B (значение)"""
+    meta = {}
+    csv_reader = csv.reader(StringIO(csv_content))
+    
+    for row in csv_reader:
+        if len(row) >= 2 and row[0] and row[1]:
+            key = row[0].strip().lower()
+            value = row[1].strip()
+            if key and value:
+                meta[key] = value
+    
+    return meta
+
+def read_google_doc(url: str, sheet_name: str = '') -> Any:
+    """Читает Google Docs или Sheets напрямую. Если sheet_name='Meta', возвращает dict с meta"""
     try:
         doc_id = ''
         doc_type = 'docs'
@@ -27,19 +41,27 @@ def read_google_doc(url: str) -> str:
             return ''
         
         if doc_type == 'sheets':
-            export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+            if sheet_name:
+                import urllib.parse
+                export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(sheet_name)}'
+            else:
+                export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
+            
             req = urllib.request.Request(export_url)
             req.add_header('User-Agent', 'Mozilla/5.0')
             
             with urllib.request.urlopen(req, timeout=10) as response:
                 csv_content = response.read().decode('utf-8')
-                csv_reader = csv.reader(StringIO(csv_content))
-                text_lines = []
                 
-                for row in csv_reader:
-                    text_lines.append('\t'.join(row))
-                
-                return '\n'.join(text_lines)
+                if sheet_name and sheet_name.lower() == 'meta':
+                    meta = extract_meta_from_csv(csv_content)
+                    return {'meta': meta}
+                else:
+                    csv_reader = csv.reader(StringIO(csv_content))
+                    text_lines = []
+                    for row in csv_reader:
+                        text_lines.append('\t'.join(row))
+                    return '\n'.join(text_lines)
         else:
             export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=txt'
             req = urllib.request.Request(export_url)
@@ -765,9 +787,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 pain_doc_id = evt['pain_doc_id']
                 default_tone = evt.get('default_tone', 'professional')
                 email_template_examples = evt.get('email_template_examples', '')
+                logo_url = evt.get('logo_url', '')
                 
                 print(f'[DEBUG] Reading program from: {program_doc_id}')
                 program_text = read_google_doc(program_doc_id)
+                
+                event_date = ''
+                event_venue = ''
+                try:
+                    meta_response = read_google_doc(program_doc_id, sheet_name='Meta')
+                    if meta_response and 'meta' in meta_response:
+                        meta = meta_response['meta']
+                        event_date = meta.get('date', '')
+                        event_venue = meta.get('venue', '')
+                        print(f'[DEBUG] Extracted meta: date={event_date}, venue={event_venue}')
+                except Exception as e:
+                    print(f'[DEBUG] Failed to read Meta sheet: {e}')
                 
                 print(f'[DEBUG] Reading pain points from: {pain_doc_id}')
                 pain_points_text = read_google_doc(pain_doc_id)
@@ -877,10 +912,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                     tone_desc = tone_descriptions.get(default_tone, default_tone)
                     
+                    logo_instruction = ''
+                    if logo_url:
+                        logo_instruction = f'\n   - В шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
+                    
+                    date_info = ''
+                    if event_date:
+                        date_info = f'\nДата проведения: {event_date}'
+                        if event_venue:
+                            date_info += f'\nМесто: {event_venue}'
+                    
                     prompt = f"""Ты - эксперт по email-маркетингу. Твоя задача - создать эффективное письмо для рассылки.
 
 КОНТЕКСТ МЕРОПРИЯТИЯ:
-Название: {evt.get('name', '')}
+Название: {evt.get('name', '')}{date_info}
 Тон общения: {tone_desc}
 
 ПРОГРАММА МЕРОПРИЯТИЯ:
@@ -903,11 +948,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 4. Создай HTML-письмо:
    - Начни с яркого крючка (боль или выгода)
    - Покажи как программа решает эту боль
-   - Используй конкретные темы из программы
+   - Используй конкретные темы из программы{logo_instruction}
    - Добавь призыв к действию
    - Соблюдай тон: {tone_desc}
    - Структурируй текст: заголовки, абзацы, списки
    - HTML должен быть валидным и адаптивным
+   - ОБЯЗАТЕЛЬНО используй дату мероприятия в тексте письма: {event_date if event_date else 'дата в программе'}
 
 ФОРМАТ ОТВЕТА (строго JSON):
 {{"subject": "цепляющая тема письма", "html": "<html><body>...полный HTML код письма...</body></html>"}}
@@ -1030,7 +1076,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 print(f'[SINGLE_EMAIL] Generating for title="{title}", type="{content_type_name}"')
                 
-                cur.execute('SELECT program_doc_id, pain_doc_id FROM events WHERE id = %s', (event_id,))
+                cur.execute('SELECT program_doc_id, pain_doc_id, logo_url FROM events WHERE id = %s', (event_id,))
                 event_row = cur.fetchone()
                 
                 if not event_row:
@@ -1042,9 +1088,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 program_doc_id = event_row['program_doc_id'] or ''
                 pain_doc_id = event_row['pain_doc_id'] or ''
+                logo_url = event_row.get('logo_url', '')
                 
                 program_text = read_google_doc(program_doc_id) if program_doc_id else ''
                 pain_text = read_google_doc(pain_doc_id) if pain_doc_id else ''
+                
+                event_date = ''
+                event_venue = ''
+                if program_doc_id:
+                    try:
+                        meta_response = read_google_doc(program_doc_id, sheet_name='Meta')
+                        if meta_response and 'meta' in meta_response:
+                            meta = meta_response['meta']
+                            event_date = meta.get('date', '')
+                            event_venue = meta.get('venue', '')
+                            print(f'[DEBUG] Extracted meta: date={event_date}, venue={event_venue}')
+                    except Exception as e:
+                        print(f'[DEBUG] Failed to read Meta sheet: {e}')
                 
                 cur.execute('SELECT id FROM content_types WHERE event_id = %s AND name = %s', (event_id, content_type_name))
                 content_type_row = cur.fetchone()
@@ -1124,9 +1184,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
                     }
                 
+                logo_instruction = ''
+                if logo_url:
+                    logo_instruction = f'\nВ шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
+                
+                date_info = ''
+                if event_date:
+                    date_info = f'\nДата проведения: {event_date}'
+                    if event_venue:
+                        date_info += f' | Место: {event_venue}'
+                
                 prompt = f"""
 Тема письма: {title}
-Инструкции для генерации: {instructions}
+Инструкции для генерации: {instructions}{date_info}
 
 Программа мероприятия:
 {program_text[:3000]}
@@ -1135,7 +1205,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 {pain_text[:2000]}
 
 Шаблон HTML:
-{html_template[:1000]}
+{html_template[:1000]}{logo_instruction}
+
+ВАЖНО: Обязательно используй дату мероприятия ({event_date if event_date else 'указана в программе'}) в тексте письма.
 
 Создай письмо на основе этих данных. Верни JSON:
 {{
