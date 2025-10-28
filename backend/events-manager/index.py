@@ -1391,9 +1391,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'list_id required'})
                     }
                 
+                print(f'[GENERATE_DRAFTS] Starting for list_id={list_id}')
+                
                 cur.execute('''
-                    SELECT eml.content_type_ids, eml.content_type_order, eml.event_id,
-                           e.program_doc_id, e.pain_doc_id, e.logo_url
+                    SELECT eml.content_type_ids, eml.event_id, eml.ai_provider, eml.ai_model,
+                           e.program_doc_id, e.pain_doc_id, e.logo_url, e.name, e.default_tone, e.email_template_examples
                     FROM event_mailing_lists eml
                     JOIN events e ON eml.event_id = e.id
                     WHERE eml.id = %s
@@ -1411,55 +1413,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 event_id = mailing_list['event_id']
                 program_doc_id = mailing_list['program_doc_id']
                 pain_doc_id = mailing_list['pain_doc_id']
-                logo_url = mailing_list.get('logo_url')
+                logo_url = mailing_list.get('logo_url', '')
+                event_name = mailing_list.get('name', '')
+                default_tone = mailing_list.get('default_tone', 'professional')
+                email_template_examples = mailing_list.get('email_template_examples', '')
+                ai_model = mailing_list.get('ai_model', 'gpt-4o-mini')
                 
-                program_text = ''
-                pain_text = ''
-                event_date = None
-                event_venue = None
+                print(f'[DEBUG] Reading program from: {program_doc_id}')
+                program_text = read_google_doc(program_doc_id)
                 
-                if program_doc_id:
-                    docs_url = 'https://functions.poehali.dev/4df54bd9-8e52-46a4-a000-7cf55c0fd37d'
-                    try:
-                        docs_req = urllib.request.Request(
-                            f'{docs_url}?doc_id={program_doc_id}&sheet_name=Program',
-                            headers={'Accept': 'application/json'}
-                        )
-                        with urllib.request.urlopen(docs_req, timeout=30) as docs_response:
-                            docs_data = json.loads(docs_response.read().decode('utf-8'))
-                            program_text = docs_data.get('content', '')
-                        
-                        meta_req = urllib.request.Request(
-                            f'{docs_url}?doc_id={program_doc_id}&sheet_name=Meta',
-                            headers={'Accept': 'application/json'}
-                        )
-                        with urllib.request.urlopen(meta_req, timeout=30) as meta_response:
-                            meta_data = json.loads(meta_response.read().decode('utf-8'))
-                            meta_content = meta_data.get('content', '')
-                            meta_dict = extract_meta_from_csv(meta_content)
-                            event_date = meta_dict.get('date')
-                            event_venue = meta_dict.get('venue')
-                    except:
-                        pass
+                event_date = ''
+                event_venue = ''
+                try:
+                    meta_response = read_google_doc(program_doc_id, sheet_name='Meta')
+                    if meta_response and 'meta' in meta_response:
+                        meta = meta_response['meta']
+                        event_date = meta.get('date', '')
+                        event_venue = meta.get('venue', '')
+                        print(f'[DEBUG] Extracted meta: date={event_date}, venue={event_venue}')
+                except Exception as e:
+                    print(f'[DEBUG] Failed to read Meta sheet: {e}')
                 
-                if pain_doc_id:
-                    docs_url = 'https://functions.poehali.dev/4df54bd9-8e52-46a4-a000-7cf55c0fd37d'
-                    try:
-                        docs_req = urllib.request.Request(
-                            f'{docs_url}?doc_id={pain_doc_id}&sheet_name=Pain',
-                            headers={'Accept': 'application/json'}
-                        )
-                        with urllib.request.urlopen(docs_req, timeout=30) as docs_response:
-                            docs_data = json.loads(docs_response.read().decode('utf-8'))
-                            pain_text = docs_data.get('content', '')
-                    except:
-                        pass
-                
-                cur.execute('''
-                    SELECT ai_model FROM event_mailing_lists WHERE id = %s
-                ''', (list_id,))
-                ai_settings = cur.fetchone()
-                ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
+                print(f'[DEBUG] Reading pain points from: {pain_doc_id}')
+                pain_points_text = read_google_doc(pain_doc_id)
                 
                 openrouter_key = os.environ.get('OPENROUTER_API_KEY')
                 openai_key = os.environ.get('OPENAI_API_KEY')
@@ -1467,15 +1443,28 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 if openrouter_key:
                     api_key = openrouter_key
                     api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                    provider = 'openrouter'
                 elif openai_key:
                     api_key = openai_key
                     api_url = 'https://api.openai.com/v1/chat/completions'
+                    provider = 'openai'
                 else:
                     return {
                         'statusCode': 500,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                         'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
                     }
+                
+                print(f'[AI] Using provider={provider}, model={ai_model}')
+                
+                tone_descriptions = {
+                    'professional': 'профессиональный и деловой',
+                    'friendly': 'дружелюбный и неформальный',
+                    'enthusiastic': 'энергичный и вдохновляющий',
+                    'formal': 'формальный и официальный',
+                    'casual': 'лёгкий и непринужденный'
+                }
+                tone_desc = tone_descriptions.get(default_tone, default_tone)
                 
                 created_count = 0
                 skipped_count = 0
@@ -1501,72 +1490,80 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     
                     template_row = cur.fetchone()
                     if not template_row:
+                        print(f'[WARN] No template for content_type_id={content_type_id}')
                         skipped_count += 1
                         continue
                     
-                    html_template = template_row['html_template'] or ''
-                    subject_template = template_row['subject_template'] or ''
                     instructions = template_row['instructions'] or ''
                     content_type_name = template_row['content_type_name']
                     
-                    if logo_url:
-                        import re
-                        img_pattern = re.compile(r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>', re.IGNORECASE)
-                        
-                        def replace_logo(match):
-                            old_img = match.group(0)
-                            if 'logo' in old_img.lower() or 'potokconf.ru/upload' in old_img:
-                                return f'<img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
-                            return old_img
-                        
-                        html_template = img_pattern.sub(replace_logo, html_template)
-                    
                     logo_instruction = ''
                     if logo_url:
-                        logo_instruction = f'\nОБЯЗАТЕЛЬНО используй логотип конференции: {logo_url}'
+                        logo_instruction = f'\n   - В шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
                     
                     date_info = ''
                     if event_date:
                         date_info = f'\nДата проведения: {event_date}'
                         if event_venue:
-                            date_info += f' | Место: {event_venue}'
+                            date_info += f'\nМесто: {event_venue}'
                     
-                    prompt = f"""
-Тип письма: {content_type_name}
-Инструкции для генерации: {instructions}{date_info}
+                    prompt = f"""Ты - эксперт по email-маркетингу. Твоя задача - создать эффективное письмо для рассылки.
 
-Программа мероприятия:
+КОНТЕКСТ МЕРОПРИЯТИЯ:
+Название: {event_name}{date_info}
+Тон общения: {tone_desc}
+
+ПРОГРАММА МЕРОПРИЯТИЯ:
 {program_text[:3000]}
 
-Боли целевой аудитории:
-{pain_text[:2000]}
+БОЛИ ЦЕЛЕВОЙ АУДИТОРИИ:
+{pain_points_text[:2000]}
 
-Шаблон темы письма:
-{subject_template[:500]}
+ЗАДАНИЕ НА ПИСЬМО:
+Тип контента: {content_type_name}
+Инструкции: {instructions}
 
-Шаблон HTML:
-{html_template[:1000]}{logo_instruction}
+ПРИМЕРЫ СТИЛЯ ПИСЕМ (если есть):
+{email_template_examples[:1000] if email_template_examples else 'Используй профессиональный стиль email-маркетинга'}
 
-ВАЖНО: Обязательно используй дату мероприятия ({event_date if event_date else 'указана в программе'}) в тексте письма.
+ТРЕБОВАНИЯ:
+1. Изучи программу мероприятия и выбери темы, максимально соответствующие типу письма "{content_type_name}"
+2. Определи из списка болей ЦА те, которые решаются выбранными темами программы
+3. Создай цепляющую тему письма (subject) длиной до 60 символов, которая отражает суть и привлекает внимание
+4. Создай HTML-письмо:
+   - Начни с яркого крючка (боль или выгода)
+   - Покажи как программа решает эту боль
+   - Используй конкретные темы из программы{logo_instruction}
+   - Добавь призыв к действию
+   - Соблюдай тон: {tone_desc}
+   - Структурируй текст: заголовки, абзацы, списки
+   - HTML должен быть валидным и адаптивным
+   - ОБЯЗАТЕЛЬНО используй дату мероприятия в тексте письма: {event_date if event_date else 'дата в программе'}
 
-Создай письмо на основе этих данных. Верни JSON:
-{{
-  "subject": "Тема письма",
-  "html": "<html>...</html>"
-}}
-"""
+ФОРМАТ ОТВЕТА (строго JSON):
+{{"subject": "цепляющая тема письма", "html": "<html><body>...полный HTML код письма...</body></html>"}}
+
+Верни ТОЛЬКО JSON, без дополнительных комментариев."""
                     
-                    request_payload = {
-                        'model': ai_model,
-                        'messages': [
-                            {'role': 'system', 'content': 'Ты - эксперт по email маркетингу. Создаёшь продающие письма для мероприятий.'},
-                            {'role': 'user', 'content': prompt}
-                        ],
-                        'temperature': 0.8,
-                        'max_tokens': 4000
-                    }
+                    print(f'[AI] Generating for type: {content_type_name}')
                     
                     try:
+                        request_payload = {
+                            'model': ai_model,
+                            'messages': [
+                                {
+                                    'role': 'system', 
+                                    'content': f'Ты профессиональный email-маркетолог. Стиль общения: {tone_desc}. Отвечаешь строго в формате JSON.'
+                                },
+                                {
+                                    'role': 'user', 
+                                    'content': prompt
+                                }
+                            ],
+                            'temperature': 0.8,
+                            'max_tokens': 4000
+                        }
+                        
                         req = urllib.request.Request(
                             api_url,
                             data=json.dumps(request_payload).encode('utf-8'),
@@ -1611,8 +1608,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 'draft'
                             ))
                             created_count += 1
+                            print(f'[SUCCESS] Generated email for {content_type_name}')
                     
                     except Exception as gen_error:
+                        print(f'[ERROR] Failed to generate for {content_type_name}: {gen_error}')
                         cur.execute('''
                             INSERT INTO generated_emails 
                             (event_list_id, content_type_id, subject, html_body, status)
