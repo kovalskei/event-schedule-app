@@ -434,6 +434,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'message': 'Mailing list settings updated'})
                 }
             
+            elif action == 'delete_mailing_list':
+                list_id = body_data.get('list_id')
+                
+                if not list_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'list_id required'})
+                    }
+                
+                # Delete drafts first
+                cur.execute('DELETE FROM email_drafts WHERE mailing_list_id = %s', (list_id,))
+                
+                # Delete mailing list
+                cur.execute('DELETE FROM event_mailing_lists WHERE id = %s', (list_id,))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Mailing list deleted'})
+                }
+            
             elif action == 'import_content_plan':
                 event_id = body_data.get('event_id')
                 items = body_data.get('items', [])
