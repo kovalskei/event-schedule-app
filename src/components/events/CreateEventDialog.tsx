@@ -79,7 +79,7 @@ export default function CreateEventDialog({
           <span className="xs:hidden">Создать</span>
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Новое мероприятие</DialogTitle>
           <DialogDescription>
@@ -87,7 +87,7 @@ export default function CreateEventDialog({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto flex-1 pr-2">
           <div>
             <Label htmlFor="name">Название мероприятия</Label>
             <Input
@@ -212,7 +212,7 @@ export default function CreateEventDialog({
           </div>
         </div>
         
-        <DialogFooter className="flex-col sm:flex-row gap-2">
+        <DialogFooter className="flex-col sm:flex-row gap-2 mt-4 pt-4 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
             Отмена
           </Button>
