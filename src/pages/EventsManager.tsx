@@ -335,7 +335,7 @@ export default function EventsManager() {
           </>
         ) : (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row gap-4 sm:justify-between sm:items-center">
+            <div className="flex justify-between items-center">
               <h2 className="text-2xl font-semibold">Мероприятия</h2>
               <CreateEventDialog
                 open={createEventOpen}
