@@ -883,9 +883,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 print(f'[AI] Using provider={provider}, model={ai_model}, api_url={api_url}')
                 
                 generated_count = 0
+                skipped_count = 0
+                
                 for row in rows:
                     title = row['title']
                     content_type_id = row['content_type_id']
+                    
+                    # Проверка на дубли: если письмо с таким заголовком уже существует
+                    cur.execute('''
+                        SELECT COUNT(*) as count FROM generated_emails
+                        WHERE event_list_id = %s AND subject = %s
+                    ''', (event_list_id, title))
+                    existing = cur.fetchone()
+                    
+                    if existing and existing['count'] > 0:
+                        print(f'[SKIP] Email with subject "{title}" already exists')
+                        skipped_count += 1
+                        continue
                     
                     cur.execute('''
                         SELECT html_template, subject_template, instructions
@@ -1053,12 +1067,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                 
                 conn.commit()
-                print(f'[CONTENT_PLAN] Generated {generated_count} emails')
+                print(f'[CONTENT_PLAN] Generated {generated_count} emails, skipped {skipped_count} duplicates')
                 
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'generated_count': generated_count})
+                    'body': json.dumps({
+                        'generated_count': generated_count,
+                        'skipped_count': skipped_count,
+                        'message': f'Создано {generated_count} писем' + (f', пропущено дублей: {skipped_count}' if skipped_count > 0 else '')
+                    })
                 }
             
             elif action == 'generate_single_email':
