@@ -4,7 +4,6 @@ from typing import Dict, Any
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import urllib.request
-import urllib.parse
 import csv
 from io import StringIO
 
@@ -43,6 +42,7 @@ def read_google_doc(url: str, sheet_name: str = '') -> Any:
         
         if doc_type == 'sheets':
             if sheet_name:
+                import urllib.parse
                 export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={urllib.parse.quote(sheet_name)}'
             else:
                 export_url = f'https://docs.google.com/spreadsheets/d/{doc_id}/export?format=csv'
@@ -1509,21 +1509,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     instructions = template_row['instructions'] or ''
                     content_type_name = template_row['content_type_name']
                     
-                    if logo_url:
-                        import re
-                        img_pattern = re.compile(r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>', re.IGNORECASE)
-                        
-                        def replace_logo(match):
-                            old_img = match.group(0)
-                            if 'logo' in old_img.lower() or 'potokconf.ru/upload' in old_img:
-                                return f'<img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
-                            return old_img
-                        
-                        html_template = img_pattern.sub(replace_logo, html_template)
-                    
                     logo_instruction = ''
                     if logo_url:
-                        logo_instruction = f'\nОБЯЗАТЕЛЬНО используй логотип конференции: {logo_url}'
+                        logo_instruction = f'\nВ шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
                     
                     date_info = ''
                     if event_date:
