@@ -673,24 +673,32 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     
                     print(f'[AI_DRAFT] Generating draft using AI for content_type={content_type_id}')
                     
-                    # Формируем промпт с контекстом
-                    user_prompt = f"""Сгенерируй письмо на основе следующих данных:
+                    # Формируем промпт: AI должен выбрать релевантный контент из данных
+                    user_prompt = f"""Ты — email-маркетолог конференции. Твоя задача — выбрать подходящий контент для письма.
 
-ИНСТРУКЦИИ ДЛЯ ГЕНЕРАЦИИ:
+ИНСТРУКЦИИ:
 {instructions}
 
-ПРОГРАММА МЕРОПРИЯТИЯ:
-{program_text[:15000]}
+ПРОГРАММА МЕРОПРИЯТИЯ (спикеры, темы, время):
+{program_text[:20000]}
 
-БОЛИ И ЗАПРОСЫ АУДИТОРИИ (используй выборочно, только релевантные):
-{pain_points_text[:15000]}
+БОЛИ И ЗАПРОСЫ АУДИТОРИИ:
+{pain_points_text[:20000]}
 
-Требования:
-1. Следуй ИНСТРУКЦИЯМ для выбора контента и тона
-2. Используй только релевантные фрагменты из болей
-3. Создай уникальный заголовок и содержание
-4. Верни JSON: {{"subject": "заголовок", "html": "html-контент"}}
-"""
+ЗАДАЧА:
+1. Прочитай ИНСТРУКЦИИ — там описано, какой тип письма нужен и какой тон использовать
+2. Выбери из ПРОГРАММЫ 2-4 релевантных спикера/темы (кто и о чём говорит)
+3. Выбери из БОЛЕЙ 1-3 реальных цитаты или запроса (конкретные фразы людей)
+4. Придумай цепляющую тему письма (subject)
+
+ВЕРНИ СТРОГО JSON:
+{{
+  "subject": "Тема письма (живая, без клише)",
+  "pain_points": "1-2 параграфа с болями аудитории (используй реальные цитаты)",
+  "program_topics": "Список из 2-4 спикеров с кратким описанием их тем (кто, откуда, о чём)"
+}}
+
+НЕ пиши HTML, НЕ добавляй лишнего текста — только JSON."""
                     
                     try:
                         ai_response = requests.post(
@@ -702,11 +710,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             json={
                                 'model': 'gpt-4o-mini',
                                 'messages': [
-                                    {'role': 'system', 'content': 'Ты эксперт по email-маркетингу для бизнес-мероприятий. Создаёшь персонализированные письма на основе инструкций.'},
+                                    {'role': 'system', 'content': 'Ты эксперт по email-маркетингу. Возвращаешь ТОЛЬКО валидный JSON, без комментариев.'},
                                     {'role': 'user', 'content': user_prompt}
                                 ],
-                                'temperature': 0.8,
-                                'max_tokens': 2000
+                                'temperature': 0.9,
+                                'max_tokens': 1500
                             },
                             timeout=60
                         )
@@ -719,13 +727,25 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         
                         # Парсим JSON из ответа AI
                         import re
-                        json_match = re.search(r'\{.*\}', ai_content, re.DOTALL)
+                        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', ai_content, re.DOTALL)
                         if json_match:
                             result = json.loads(json_match.group())
-                            final_subject = result.get('subject', template_name)
-                            final_html = result.get('html', '')
+                            ai_subject = result.get('subject', template_name)
+                            ai_pain_points = result.get('pain_points', '')
+                            ai_program_topics = result.get('program_topics', '')
+                            
+                            # Подставляем AI-контент в готовый HTML-шаблон
+                            final_html = html_template.replace('{pain_points}', ai_pain_points)
+                            final_html = final_html.replace('{program_topics}', ai_program_topics)
+                            
+                            final_subject = subject_template.replace('{pain_points}', ai_subject)
+                            final_subject = final_subject.replace('{program_topics}', ai_subject)
+                            
+                            # Если в subject_template нет плейсхолдеров, используем AI subject
+                            if '{' not in subject_template:
+                                final_subject = ai_subject
                         else:
-                            print(f'[ERROR] Failed to parse AI response JSON')
+                            print(f'[ERROR] Failed to parse AI response JSON: {ai_content[:200]}')
                             continue
                         
                     except Exception as e:
