@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,6 +72,7 @@ export default function EventSettingsDialog({
     instructions: '',
   });
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+  const templateFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open && eventId) {
@@ -250,6 +251,10 @@ export default function EventSettingsDialog({
       subject_template: template.subject_template,
       instructions: template.instructions,
     });
+    
+    setTimeout(() => {
+      templateFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   const handleUpdateTemplate = async () => {
@@ -698,7 +703,7 @@ export default function EventSettingsDialog({
                 </div>
 
                 {contentTypes.length > 0 ? (
-                  <div className="border-t pt-4 space-y-3">
+                  <div ref={templateFormRef} className="border-t pt-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold">
                         {editingTemplate ? 'Редактировать шаблон' : 'Добавить новый шаблон'}
