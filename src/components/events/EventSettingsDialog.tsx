@@ -25,6 +25,7 @@ interface Event {
   default_tone: string;
   email_template_examples: string;
   logo_url?: string;
+  cta_base_url?: string;
 }
 
 interface ContentType {
@@ -578,6 +579,19 @@ export default function EventSettingsDialog({
                     rows={5}
                     placeholder="Примеры успешных писем, референсы дизайна..."
                   />
+                </div>
+
+                <div>
+                  <Label htmlFor="cta_base_url">Базовая CTA ссылка</Label>
+                  <Input
+                    id="cta_base_url"
+                    value={event.cta_base_url || ''}
+                    onChange={(e) => setEvent({ ...event, cta_base_url: e.target.value })}
+                    placeholder="https://example.com/register"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    UTM-метки будут добавлены автоматически при генерации писем
+                  </p>
                 </div>
 
                 <Button onClick={handleUpdateEvent} disabled={loading} className="w-full">

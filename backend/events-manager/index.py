@@ -1013,6 +1013,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     if logo_url:
                         logo_instruction = f'\n   - В шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
                     
+                    cta_instruction = ''
+                    if evt.get('cta_base_url'):
+                        cta_instruction = '\n   - Для кнопки призыва к действию используй {{{{CTA_URL}}}} в href (UTM метки добавятся автоматически)'
+                    
                     date_info = ''
                     if event_date:
                         date_info = f'\nДата проведения: {event_date}'
@@ -1045,7 +1049,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 4. Создай HTML-письмо:
    - Начни с яркого крючка (боль или выгода)
    - Покажи как программа решает эту боль
-   - Используй конкретные темы из программы{logo_instruction}
+   - Используй конкретные темы из программы{logo_instruction}{cta_instruction}
    - Добавь призыв к действию
    - Соблюдай тон: {tone_desc}
    - Структурируй текст: заголовки, абзацы, списки
@@ -1120,6 +1124,41 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             final_html = email_data.get('html', '')
                             
                             print(f'[AI] Generated subject: {final_subject}')
+                            
+                            # Генерируем CTA ссылку с UTM метками
+                            cta_url = evt.get('cta_base_url', '')
+                            if cta_url:
+                                cur.execute('''
+                                    SELECT utm_source, utm_medium, utm_campaign
+                                    FROM event_mailing_lists
+                                    WHERE id = %s
+                                ''', (event_list_id,))
+                                utm_data = cur.fetchone()
+                                
+                                utm_params = []
+                                if utm_data and utm_data.get('utm_source'):
+                                    utm_params.append(f"utm_source={urllib.parse.quote(utm_data['utm_source'])}")
+                                if utm_data and utm_data.get('utm_medium'):
+                                    utm_params.append(f"utm_medium={urllib.parse.quote(utm_data['utm_medium'])}")
+                                if utm_data and utm_data.get('utm_campaign'):
+                                    utm_params.append(f"utm_campaign={urllib.parse.quote(utm_data['utm_campaign'])}")
+                                
+                                # Добавляем utm_content = название типа контента
+                                cur.execute('SELECT name FROM content_types WHERE id = %s', (content_type_id,))
+                                ct_row = cur.fetchone()
+                                if ct_row:
+                                    utm_params.append(f"utm_content={urllib.parse.quote(ct_row['name'])}")
+                                
+                                # Добавляем utm_term = тема письма (заголовок)
+                                utm_params.append(f"utm_term={urllib.parse.quote(title)}")
+                                
+                                if utm_params:
+                                    separator = '&' if '?' in cta_url else '?'
+                                    cta_url_with_utm = f"{cta_url}{separator}{'&'.join(utm_params)}"
+                                    
+                                    # Заменяем {{CTA_URL}} в HTML на готовую ссылку
+                                    final_html = final_html.replace('{{CTA_URL}}', cta_url_with_utm)
+                                    print(f'[UTM] Generated CTA URL with params: {len(utm_params)} params')
                             
                             cur.execute('''
                                 INSERT INTO generated_emails (
