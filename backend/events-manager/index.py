@@ -1198,6 +1198,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             
                             # Заменяем CTA ссылки из типа контента
                             if ct_row and ct_row.get('cta_urls'):
+                                import re
                                 cta_urls_list = ct_row['cta_urls'] if isinstance(ct_row['cta_urls'], list) else json.loads(ct_row['cta_urls']) if ct_row['cta_urls'] else []
                                 
                                 for idx, cta in enumerate(cta_urls_list):
@@ -1206,9 +1207,42 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                         separator = '&' if '?' in base_url else '?'
                                         full_url = f"{base_url}{separator}{'&'.join(utm_params)}"
                                         
-                                        # Заменяем {{CTA_URL_0}}, {{CTA_URL_1}} и т.д.
+                                        # 1. Заменяем {{CTA_URL_0}}, {{CTA_URL_1}} и т.д.
                                         final_html = final_html.replace(f'{{{{CTA_URL_{idx}}}}}', full_url)
-                                        print(f'[UTM] Replaced {{{{CTA_URL_{idx}}}}} with {cta.get("label", "")} link')
+                                        
+                                        # 2. Умная замена по тексту кнопки
+                                        if cta.get('label'):
+                                            label = cta['label']
+                                            
+                                            # Ищем все <a> теги с этим текстом
+                                            # Паттерн: <a href="любая_ссылка">текст_кнопки</a>
+                                            # Поддерживает вариации: с пробелами, переносами строк, атрибутами
+                                            patterns = [
+                                                # Точное совпадение текста кнопки
+                                                (rf'(<a[^>]*href=["\'])([^"\']*?)(["\'][^>]*>)\s*{re.escape(label)}\s*(</a>)', 1, 2, 3, 4),
+                                                # Текст внутри <span>, <strong>, <b> внутри <a>
+                                                (rf'(<a[^>]*href=["\'])([^"\']*?)(["\'][^>]*>)([^<]*<[^>]+>)*\s*{re.escape(label)}\s*([^<]*</[^>]+>)*(</a>)', 1, 2, 3, None, None),
+                                            ]
+                                            
+                                            for pattern_tuple in patterns:
+                                                pattern = pattern_tuple[0]
+                                                matches = re.finditer(pattern, final_html, re.IGNORECASE | re.DOTALL)
+                                                
+                                                for match in matches:
+                                                    old_href = match.group(2)
+                                                    # Пропускаем, если это уже наша ссылка или плейсхолдер
+                                                    if old_href.startswith('http') and 'utm_source=' in old_href:
+                                                        continue
+                                                    if '{{CTA_URL' in old_href:
+                                                        continue
+                                                    
+                                                    # Заменяем старую ссылку на новую с UTM
+                                                    old_tag = match.group(0)
+                                                    new_tag = old_tag.replace(old_href, full_url, 1)
+                                                    final_html = final_html.replace(old_tag, new_tag, 1)
+                                                    print(f'[SMART_CTA] Replaced link for button "{label}" -> {base_url}')
+                                        
+                                        print(f'[UTM] Processed CTA_{idx}: {cta.get("label", "")} -> {base_url}')
                                 
                                 # Также заменяем {{CTA_URL}} на первую ссылку для обратной совместимости
                                 if cta_urls_list and cta_urls_list[0].get('url'):
