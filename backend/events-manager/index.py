@@ -376,6 +376,38 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'content_type_id': content_type_id, 'message': 'Content type created'})
                 }
             
+            elif action == 'update_content_type':
+                content_type_id = body_data.get('content_type_id')
+                name = body_data.get('name', '')
+                description = body_data.get('description', '')
+                cta_urls = body_data.get('cta_urls', [])
+                
+                if not content_type_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'content_type_id required'})
+                    }
+                
+                # Фильтруем пустые CTA (где нет ни label, ни url)
+                filtered_cta = [cta for cta in cta_urls if cta.get('label') or cta.get('url')]
+                
+                cur.execute('''
+                    UPDATE content_types SET
+                        name = %s,
+                        description = %s,
+                        cta_urls = %s
+                    WHERE id = %s
+                ''', (name, description, json.dumps(filtered_cta), content_type_id))
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': 'Content type updated'})
+                }
+            
             elif action == 'create_email_template':
                 event_id = body_data.get('event_id')
                 content_type_id = body_data.get('content_type_id')

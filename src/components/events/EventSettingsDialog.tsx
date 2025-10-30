@@ -70,6 +70,7 @@ export default function EventSettingsDialog({
     description: '', 
     cta_urls: [{ label: '', url: '' }] 
   });
+  const [editingContentType, setEditingContentType] = useState<ContentType | null>(null);
   const [newTemplate, setNewTemplate] = useState({
     content_type_id: '',
     name: '',
@@ -79,6 +80,7 @@ export default function EventSettingsDialog({
   });
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const templateFormRef = useRef<HTMLDivElement>(null);
+  const contentTypeFormRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open && eventId) {
@@ -162,14 +164,21 @@ export default function EventSettingsDialog({
 
     setLoading(true);
     try {
+      const action = editingContentType ? 'update_content_type' : 'create_content_type';
+      const body: any = {
+        action,
+        event_id: eventId,
+        ...newContentType,
+      };
+
+      if (editingContentType) {
+        body.content_type_id = editingContentType.id;
+      }
+
       const res = await fetch(EVENTS_MANAGER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create_content_type',
-          event_id: eventId,
-          ...newContentType,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -179,7 +188,7 @@ export default function EventSettingsDialog({
       }
 
       toast({
-        title: 'Тип контента создан',
+        title: editingContentType ? 'Тип контента обновлён' : 'Тип контента создан',
         description: newContentType.name,
       });
 
@@ -188,10 +197,11 @@ export default function EventSettingsDialog({
         description: '', 
         cta_urls: [{ label: '', url: '' }] 
       });
+      setEditingContentType(null);
       loadEventSettings();
     } catch (error: any) {
       toast({
-        title: 'Ошибка создания',
+        title: editingContentType ? 'Ошибка обновления' : 'Ошибка создания',
         description: error.message,
         variant: 'destructive',
       });
@@ -626,10 +636,31 @@ export default function EventSettingsDialog({
                       key={ct.id}
                       className="p-3 border rounded-lg bg-gray-50 space-y-2"
                     >
-                      <div className="font-semibold">{ct.name}</div>
-                      {ct.description && (
-                        <div className="text-sm text-gray-600">{ct.description}</div>
-                      )}
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="font-semibold">{ct.name}</div>
+                          {ct.description && (
+                            <div className="text-sm text-gray-600">{ct.description}</div>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditingContentType(ct);
+                            setNewContentType({
+                              name: ct.name,
+                              description: ct.description || '',
+                              cta_urls: ct.cta_urls && ct.cta_urls.length > 0 ? ct.cta_urls : [{ label: '', url: '' }]
+                            });
+                            setTimeout(() => {
+                              contentTypeFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 100);
+                          }}
+                        >
+                          <Icon name="Pencil" className="w-4 h-4" />
+                        </Button>
+                      </div>
                       {ct.cta_urls && ct.cta_urls.length > 0 && (
                         <div className="text-xs space-y-1 pt-2 border-t">
                           <div className="font-medium text-gray-500">CTA кнопки:</div>
@@ -653,8 +684,29 @@ export default function EventSettingsDialog({
                   )}
                 </div>
 
-                <div className="border-t pt-4 space-y-3">
-                  <h3 className="font-semibold">Добавить новый тип</h3>
+                <div ref={contentTypeFormRef} className="border-t pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">
+                      {editingContentType ? 'Редактировать тип контента' : 'Добавить новый тип'}
+                    </h3>
+                    {editingContentType && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setEditingContentType(null);
+                          setNewContentType({ 
+                            name: '', 
+                            description: '', 
+                            cta_urls: [{ label: '', url: '' }] 
+                          });
+                        }}
+                      >
+                        <Icon name="X" className="w-4 h-4 mr-1" />
+                        Отмена
+                      </Button>
+                    )}
+                  </div>
                   <div>
                     <Label htmlFor="new_content_type_name">Название</Label>
                     <Input
@@ -731,8 +783,8 @@ export default function EventSettingsDialog({
                   </div>
                   
                   <Button onClick={handleCreateContentType} disabled={loading}>
-                    <Icon name="Plus" className="w-4 h-4 mr-2" />
-                    Создать тип контента
+                    <Icon name={editingContentType ? "Save" : "Plus"} className="w-4 h-4 mr-2" />
+                    {editingContentType ? 'Сохранить изменения' : 'Создать тип контента'}
                   </Button>
                 </div>
               </CardContent>
