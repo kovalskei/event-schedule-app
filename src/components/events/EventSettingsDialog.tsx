@@ -32,6 +32,7 @@ interface ContentType {
   id: number;
   name: string;
   description: string;
+  cta_urls?: Array<{ label: string; url: string }>;
 }
 
 interface EmailTemplate {
@@ -64,7 +65,11 @@ export default function EventSettingsDialog({
   const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
   
-  const [newContentType, setNewContentType] = useState({ name: '', description: '' });
+  const [newContentType, setNewContentType] = useState({ 
+    name: '', 
+    description: '', 
+    cta_urls: [{ label: '', url: '' }] 
+  });
   const [newTemplate, setNewTemplate] = useState({
     content_type_id: '',
     name: '',
@@ -178,7 +183,11 @@ export default function EventSettingsDialog({
         description: newContentType.name,
       });
 
-      setNewContentType({ name: '', description: '' });
+      setNewContentType({ 
+        name: '', 
+        description: '', 
+        cta_urls: [{ label: '', url: '' }] 
+      });
       loadEventSettings();
     } catch (error: any) {
       toast({
@@ -615,11 +624,24 @@ export default function EventSettingsDialog({
                   {contentTypes.map((ct) => (
                     <div
                       key={ct.id}
-                      className="p-3 border rounded-lg bg-gray-50"
+                      className="p-3 border rounded-lg bg-gray-50 space-y-2"
                     >
                       <div className="font-semibold">{ct.name}</div>
                       {ct.description && (
-                        <div className="text-sm text-gray-600 mt-1">{ct.description}</div>
+                        <div className="text-sm text-gray-600">{ct.description}</div>
+                      )}
+                      {ct.cta_urls && ct.cta_urls.length > 0 && (
+                        <div className="text-xs space-y-1 pt-2 border-t">
+                          <div className="font-medium text-gray-500">CTA кнопки:</div>
+                          {ct.cta_urls.filter(cta => cta.label && cta.url).map((cta, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-gray-600">
+                              <Icon name="Link" className="w-3 h-3" />
+                              <span>{cta.label}</span>
+                              <span className="text-gray-400">→</span>
+                              <span className="truncate">{cta.url}</span>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -651,6 +673,63 @@ export default function EventSettingsDialog({
                       placeholder="Для чего используется этот тип..."
                     />
                   </div>
+                  
+                  <div className="space-y-3">
+                    <Label>CTA кнопки</Label>
+                    {newContentType.cta_urls.map((cta, idx) => (
+                      <div key={idx} className="flex gap-2">
+                        <Input
+                          value={cta.label}
+                          onChange={(e) => {
+                            const updated = [...newContentType.cta_urls];
+                            updated[idx].label = e.target.value;
+                            setNewContentType({ ...newContentType, cta_urls: updated });
+                          }}
+                          placeholder="Текст кнопки (Зарегистрироваться)"
+                          className="flex-1"
+                        />
+                        <Input
+                          value={cta.url}
+                          onChange={(e) => {
+                            const updated = [...newContentType.cta_urls];
+                            updated[idx].url = e.target.value;
+                            setNewContentType({ ...newContentType, cta_urls: updated });
+                          }}
+                          placeholder="https://event.com/register"
+                          className="flex-1"
+                        />
+                        {newContentType.cta_urls.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              const updated = newContentType.cta_urls.filter((_, i) => i !== idx);
+                              setNewContentType({ ...newContentType, cta_urls: updated });
+                            }}
+                          >
+                            <Icon name="X" className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setNewContentType({
+                          ...newContentType,
+                          cta_urls: [...newContentType.cta_urls, { label: '', url: '' }]
+                        });
+                      }}
+                    >
+                      <Icon name="Plus" className="w-3 h-3 mr-1" />
+                      Добавить кнопку
+                    </Button>
+                    <p className="text-xs text-gray-500">
+                      UTM-метки будут добавлены автоматически при генерации писем
+                    </p>
+                  </div>
+                  
                   <Button onClick={handleCreateContentType} disabled={loading}>
                     <Icon name="Plus" className="w-4 h-4 mr-2" />
                     Создать тип контента

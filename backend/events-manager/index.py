@@ -349,6 +349,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 event_id = body_data.get('event_id')
                 name = body_data.get('name', '')
                 description = body_data.get('description', '')
+                cta_urls = body_data.get('cta_urls', [])
                 
                 if not event_id or not name:
                     return {
@@ -357,11 +358,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'event_id and name required'})
                     }
                 
+                # Фильтруем пустые CTA (где нет ни label, ни url)
+                filtered_cta = [cta for cta in cta_urls if cta.get('label') or cta.get('url')]
+                
                 cur.execute('''
-                    INSERT INTO content_types (event_id, name, description)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO content_types (event_id, name, description, cta_urls)
+                    VALUES (%s, %s, %s, %s)
                     RETURNING id
-                ''', (event_id, name, description))
+                ''', (event_id, name, description, json.dumps(filtered_cta)))
                 
                 content_type_id = cur.fetchone()['id']
                 conn.commit()
@@ -1014,7 +1018,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         logo_instruction = f'\n   - В шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
                     
                     cta_instruction = ''
-                    if evt.get('cta_base_url'):
+                    cur.execute('SELECT cta_urls FROM content_types WHERE id = %s', (content_type_id,))
+                    ct_cta = cur.fetchone()
+                    if ct_cta and ct_cta.get('cta_urls'):
+                        cta_list = ct_cta['cta_urls'] if isinstance(ct_cta['cta_urls'], list) else json.loads(ct_cta['cta_urls']) if ct_cta['cta_urls'] else []
+                        if cta_list:
+                            cta_instruction = '\n   - Для CTA кнопок используй:'
+                            for idx, cta in enumerate(cta_list):
+                                if cta.get('label'):
+                                    cta_instruction += f'\n     * {{{{{{CTA_URL_{idx}}}}}}} для кнопки "{cta["label"]}"'
+                            cta_instruction += '\n     (UTM метки добавятся автоматически)'
+                    elif evt.get('cta_base_url'):
                         cta_instruction = '\n   - Для кнопки призыва к действию используй {{{{CTA_URL}}}} в href (UTM метки добавятся автоматически)'
                     
                     date_info = ''
@@ -1125,40 +1139,59 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             
                             print(f'[AI] Generated subject: {final_subject}')
                             
-                            # Генерируем CTA ссылку с UTM метками
-                            cta_url = evt.get('cta_base_url', '')
-                            if cta_url:
-                                cur.execute('''
-                                    SELECT utm_source, utm_medium, utm_campaign
-                                    FROM event_mailing_lists
-                                    WHERE id = %s
-                                ''', (event_list_id,))
-                                utm_data = cur.fetchone()
+                            # Получаем UTM параметры для всех ссылок
+                            cur.execute('''
+                                SELECT utm_source, utm_medium, utm_campaign
+                                FROM event_mailing_lists
+                                WHERE id = %s
+                            ''', (event_list_id,))
+                            utm_data = cur.fetchone()
+                            
+                            utm_params = []
+                            if utm_data and utm_data.get('utm_source'):
+                                utm_params.append(f"utm_source={urllib.parse.quote(utm_data['utm_source'])}")
+                            if utm_data and utm_data.get('utm_medium'):
+                                utm_params.append(f"utm_medium={urllib.parse.quote(utm_data['utm_medium'])}")
+                            if utm_data and utm_data.get('utm_campaign'):
+                                utm_params.append(f"utm_campaign={urllib.parse.quote(utm_data['utm_campaign'])}")
+                            
+                            # Добавляем utm_content = название типа контента
+                            cur.execute('SELECT name, cta_urls FROM content_types WHERE id = %s', (content_type_id,))
+                            ct_row = cur.fetchone()
+                            if ct_row:
+                                utm_params.append(f"utm_content={urllib.parse.quote(ct_row['name'])}")
+                            
+                            # Добавляем utm_term = тема письма (заголовок)
+                            utm_params.append(f"utm_term={urllib.parse.quote(title)}")
+                            
+                            # Заменяем CTA ссылки из типа контента
+                            if ct_row and ct_row.get('cta_urls'):
+                                cta_urls_list = ct_row['cta_urls'] if isinstance(ct_row['cta_urls'], list) else json.loads(ct_row['cta_urls']) if ct_row['cta_urls'] else []
                                 
-                                utm_params = []
-                                if utm_data and utm_data.get('utm_source'):
-                                    utm_params.append(f"utm_source={urllib.parse.quote(utm_data['utm_source'])}")
-                                if utm_data and utm_data.get('utm_medium'):
-                                    utm_params.append(f"utm_medium={urllib.parse.quote(utm_data['utm_medium'])}")
-                                if utm_data and utm_data.get('utm_campaign'):
-                                    utm_params.append(f"utm_campaign={urllib.parse.quote(utm_data['utm_campaign'])}")
+                                for idx, cta in enumerate(cta_urls_list):
+                                    if cta.get('url'):
+                                        base_url = cta['url']
+                                        separator = '&' if '?' in base_url else '?'
+                                        full_url = f"{base_url}{separator}{'&'.join(utm_params)}"
+                                        
+                                        # Заменяем {{CTA_URL_0}}, {{CTA_URL_1}} и т.д.
+                                        final_html = final_html.replace(f'{{{{CTA_URL_{idx}}}}}', full_url)
+                                        print(f'[UTM] Replaced {{{{CTA_URL_{idx}}}}} with {cta.get("label", "")} link')
                                 
-                                # Добавляем utm_content = название типа контента
-                                cur.execute('SELECT name FROM content_types WHERE id = %s', (content_type_id,))
-                                ct_row = cur.fetchone()
-                                if ct_row:
-                                    utm_params.append(f"utm_content={urllib.parse.quote(ct_row['name'])}")
-                                
-                                # Добавляем utm_term = тема письма (заголовок)
-                                utm_params.append(f"utm_term={urllib.parse.quote(title)}")
-                                
-                                if utm_params:
-                                    separator = '&' if '?' in cta_url else '?'
-                                    cta_url_with_utm = f"{cta_url}{separator}{'&'.join(utm_params)}"
-                                    
-                                    # Заменяем {{CTA_URL}} в HTML на готовую ссылку
-                                    final_html = final_html.replace('{{CTA_URL}}', cta_url_with_utm)
-                                    print(f'[UTM] Generated CTA URL with params: {len(utm_params)} params')
+                                # Также заменяем {{CTA_URL}} на первую ссылку для обратной совместимости
+                                if cta_urls_list and cta_urls_list[0].get('url'):
+                                    base_url = cta_urls_list[0]['url']
+                                    separator = '&' if '?' in base_url else '?'
+                                    full_url = f"{base_url}{separator}{'&'.join(utm_params)}"
+                                    final_html = final_html.replace('{{CTA_URL}}', full_url)
+                            
+                            # Fallback на базовую CTA ссылку из настроек события
+                            elif evt.get('cta_base_url'):
+                                base_url = evt.get('cta_base_url')
+                                separator = '&' if '?' in base_url else '?'
+                                full_url = f"{base_url}{separator}{'&'.join(utm_params)}"
+                                final_html = final_html.replace('{{CTA_URL}}', full_url)
+                                print(f'[UTM] Used fallback cta_base_url from event settings')
                             
                             cur.execute('''
                                 INSERT INTO generated_emails (
