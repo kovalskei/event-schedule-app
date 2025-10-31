@@ -89,7 +89,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             program_text = read_google_doc(program_doc_url)
             if program_text:
                 lines = program_text.strip().split('\n')
+                
+                max_items = 50
+                processed = 0
+                
                 for line in lines:
+                    if processed >= max_items:
+                        print(f"[INFO] Reached limit of {max_items} program items")
+                        break
+                    
                     line = line.strip()
                     if not line or len(line) < 10:
                         continue
@@ -104,6 +112,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         )
                         
                         indexed_count += 1
+                        processed += 1
                     except Exception as e:
                         print(f"[ERROR] Failed to index program line: {str(e)}")
                         continue
@@ -113,7 +122,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if pain_text:
                 paragraphs = [p.strip() for p in pain_text.split('\n\n') if p.strip()]
                 
+                max_pain_items = 20
+                processed_pain = 0
+                
                 for para in paragraphs:
+                    if processed_pain >= max_pain_items:
+                        print(f"[INFO] Reached limit of {max_pain_items} pain points")
+                        break
+                    
                     if len(para) < 10:
                         continue
                     
@@ -127,6 +143,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         )
                         
                         indexed_count += 1
+                        processed_pain += 1
                     except Exception as e:
                         print(f"[ERROR] Failed to index pain point: {str(e)}")
                         continue
@@ -212,5 +229,13 @@ def create_embedding(text: str, api_key: str) -> List[float]:
     )
     
     with urllib.request.urlopen(req) as response:
-        result = json.loads(response.read().decode('utf-8'))
+        response_text = response.read().decode('utf-8')
+        result = json.loads(response_text)
+        
+        if 'error' in result:
+            raise Exception(f"OpenRouter API error: {result['error']}")
+        
+        if 'data' not in result or len(result['data']) == 0:
+            raise Exception(f"Invalid OpenRouter response: {response_text[:200]}")
+        
         return result['data'][0]['embedding']
