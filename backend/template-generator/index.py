@@ -82,6 +82,8 @@ HTML:
         try:
             generated = call_openrouter(prompt, openrouter_key)
             
+            print(f"[DEBUG] AI Raw Response (first 500 chars): {generated[:500]}")
+            
             json_str = generated.strip()
             
             if '```json' in json_str:
@@ -98,10 +100,14 @@ HTML:
             if json_start != -1 and json_end > json_start:
                 json_str = json_str[json_start:json_end]
             
+            print(f"[DEBUG] Extracted JSON (first 500 chars): {json_str[:500]}")
+            
             result = json.loads(json_str)
             
             html_layout = result.get('html_layout', '')
             slots_schema = result.get('slots_schema', {})
+            
+            print(f"[DEBUG] html_layout length: {len(html_layout)}, slots_schema keys: {list(slots_schema.keys())}")
             
             conn = psycopg2.connect(db_url)
             cur = conn.cursor()
