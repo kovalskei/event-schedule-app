@@ -35,6 +35,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         content_type_id = body_data.get('content_type_id')
         template_name = body_data.get('name', 'Сгенерированный шаблон')
         
+        print(f"[DEBUG] Received html_content length: {len(html_content) if html_content else 0} chars")
+        print(f"[DEBUG] First 200 chars: {html_content[:200] if html_content else 'EMPTY'}")
+        
         if not html_content:
             return {
                 'statusCode': 400,
@@ -68,7 +71,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         prompt = f"""Преврати HTML-письмо в шаблон с динамическими переменными для автоматизированной подстановки данных (спикеров, боли, CTA и т.д.), не ломая верстку.
 
 HTML для преобразования:
-{html_content[:5000]}
+{html_content[:6000]}
 
 Структура шаблона - что нужно параметризовать:
 
@@ -186,12 +189,12 @@ CTA-ссылка | {{{{cta_url}}}}
         'body': json.dumps({'error': 'Method not allowed'})
     }
 
-def call_openrouter(prompt: str, api_key: str, model: str = 'anthropic/claude-3-haiku') -> str:
+def call_openrouter(prompt: str, api_key: str, model: str = 'anthropic/claude-3.5-sonnet') -> str:
     """Вызывает OpenRouter Chat API"""
     data = {
         'model': model,
         'messages': [{'role': 'user', 'content': prompt}],
-        'temperature': 0.7
+        'temperature': 0.3
     }
     
     req = urllib.request.Request(
