@@ -65,46 +65,33 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
             }
         
-        prompt = f"""Ты — эксперт по преобразованию HTML email-шаблонов в Mustache. Твоя задача — сохранить ВСЕЙ HTML КОД ПОЛНОСТЬЮ, заменив ТОЛЬКО текстовые данные на слоты.
+        prompt = f"""Преврати HTML-письмо в шаблон с динамическими переменными для автоматизированной подстановки данных (спикеров, боли, CTA и т.д.), не ломая верстку.
 
 HTML для преобразования:
 {html_content[:8000]}
 
-КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+Структура шаблона - что нужно параметризовать:
 
-1. СОХРАНИ АБСОЛЮТНО ВСЁ:
-   - Все <table>, <tr>, <td> теги
-   - Все inline-стили (style="padding: 20px; color: #333;")
-   - Все атрибуты (cellpadding, cellspacing, bgcolor, width)
-   - Все <tr> блоки с footer, контактами, ссылками на отписку
-   - Все CTA-кнопки (включая дублирующиеся в конце письма)
+Блок | Переменная
+--- | ---
+Заголовок в теле | {{{{intro_heading}}}}
+Вступительный абзац | {{{{intro_text}}}}
+Подзаголовок | {{{{subheading}}}}
+CTA-текст | {{{{cta_text}}}}
+CTA-ссылка | {{{{cta_url}}}}
+Спикеры (если есть) | {{{{#speakers}}}}...{{{{/speakers}}}} с {{{{name}}}}, {{{{title}}}}, {{{{photo_url}}}}
 
-2. НЕ УПРОЩАЙ СТРУКТУРУ:
-   ❌ НЕ удаляй вложенные таблицы
-   ❌ НЕ удаляй footer секции
-   ❌ НЕ удаляй статические тексты ("Команда HUMAN", "e-mail:", "тел:")
-   ❌ НЕ сокращай HTML до <html><body>..., сохрани всю табличную структуру для email
-
-3. ЗАМЕНИ ТОЛЬКО ПЕРЕМЕННЫЕ ДАННЫЕ:
-   ✅ Заголовки → {{{{headline}}}}
-   ✅ Вступительный текст → {{{{intro_text}}}}
-   ✅ Текст кнопок → {{{{cta_text}}}}
-   ✅ Ссылки кнопок → {{{{cta_url}}}}
-   ✅ Список спикеров → {{{{#speakers}}}}...{{{{/speakers}}}} с {{{{name}}}}, {{{{title}}}}, {{{{pitch}}}}, {{{{photo_url}}}}
-
-4. СТАТИЧЕСКИЕ ДАННЫЕ НЕ ТРОГАЙ:
-   - "Команда HUMAN", "e-mail:", "тел:", "Отпишитесь"
-   - Все тексты в footer
-   - Логотипы и изображения компании
-
-5. ДЛИНА HTML:
-   Если оригинал 5000+ символов, твой результат должен быть 4500+ символов (сохрани структуру!).
+Правила:
+- Сохрани ВСЮ HTML-структуру: таблицы, inline-стили, атрибуты, footer, ссылки отписки
+- Замени ТОЛЬКО динамический контент (заголовки, текст, ссылки)
+- НЕ трогай статические элементы (логотипы компании, контакты в footer, copyright)
+- Длина результата должна быть близка к оригиналу
 
 Верни ТОЛЬКО валидный JSON:
 {{{{
-  "html_layout": "ПОЛНЫЙ HTML код со всеми таблицами, footer и CTA",
-  "slots_schema": {{"headline": "string", "intro_text": "string", "speakers": [{{"name": "string", "title": "string", "pitch": "string", "photo_url": "string"}}], "cta_text": "string", "cta_url": "string", "subject": "string"}},
-  "notes": "Краткое описание замен"
+  "html_layout": "полный HTML со слотами",
+  "slots_schema": {{"intro_heading": "string", "intro_text": "string", ...}},
+  "notes": "какие замены сделаны"
 }}}}"""
         
         try:
@@ -214,6 +201,6 @@ def call_openrouter(prompt: str, api_key: str, model: str = 'anthropic/claude-3.
         }
     )
     
-    with urllib.request.urlopen(req, timeout=25) as response:
+    with urllib.request.urlopen(req, timeout=50) as response:
         result = json.loads(response.read().decode('utf-8'))
         return result['choices'][0]['message']['content']
