@@ -3,13 +3,12 @@ import os
 from typing import Dict, Any, List
 import psycopg2
 import urllib.request
-import urllib.parse
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Генерирует черновики писем через V2 pipeline с RAG-поиском из knowledge_store
-    Args: event - dict с httpMethod, body {event_id: int, content_type_id: int}
-    Returns: HTTP response с сгенерированным письмом (subject, html)
+    Business: Генерирует письма через слоты: AI заполняет структурированные данные, шаблон остаётся неизменным
+    Args: event - dict с httpMethod, body {event_id: int, content_type_id: int, content_plan_item_id?: int}
+    Returns: HTTP response с сгенерированным письмом (subject, html, slots_data)
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -33,6 +32,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         event_id = body_data.get('event_id')
         content_type_id = body_data.get('content_type_id')
+        content_plan_item_id = body_data.get('content_plan_item_id')
         
         if not event_id or not content_type_id:
             return {
@@ -75,8 +75,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         cur.execute(
-            "SELECT name, instructions, html_layout, slots_schema FROM t_p22819116_event_schedule_app.email_templates WHERE event_id = " + 
-            str(event_id) + " AND content_type_id = " + str(content_type_id) + " LIMIT 1"
+            "SELECT name, instructions, html_layout, slots_schema FROM t_p22819116_event_schedule_app.email_templates "
+            "WHERE event_id = " + str(event_id) + " AND content_type_id = " + str(content_type_id) + " LIMIT 1"
         )
         
         template_row = cur.fetchone()
@@ -90,9 +90,32 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'Template not found for this content type'})
             }
         
-        template_name, instructions, html_layout, slots_schema = template_row
+        template_name, instructions, html_layout, slots_schema_json = template_row
         
-        query_text = instructions if instructions else template_name
+        if not html_layout or not slots_schema_json:
+            cur.close()
+            conn.close()
+            return {
+                'statusCode': 400,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'Template missing html_layout or slots_schema. Update template first.'})
+            }
+        
+        slots_schema = slots_schema_json
+        
+        key_message = None
+        subject_hint = None
+        
+        if content_plan_item_id:
+            cur.execute(
+                "SELECT subject, key_message FROM t_p22819116_event_schedule_app.content_plan_items "
+                "WHERE id = " + str(content_plan_item_id)
+            )
+            plan_row = cur.fetchone()
+            if plan_row:
+                subject_hint, key_message = plan_row
+        
+        query_text = key_message if key_message else (instructions if instructions else template_name)
         query_embedding = create_embedding(query_text, openrouter_key)
         
         cur.execute(
@@ -117,51 +140,87 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         context = "\n".join(context_texts)
         
+        cur.execute(
+            "SELECT default_cta_primary, default_cta_text_primary, default_cta_secondary, default_cta_text_secondary "
+            "FROM t_p22819116_event_schedule_app.content_types WHERE id = " + str(content_type_id)
+        )
+        
+        cta_row = cur.fetchone()
+        
+        cta_url = cta_row[0] if cta_row and cta_row[0] else 'https://human-obuchenie.ru'
+        cta_text_default = cta_row[1] if cta_row and cta_row[1] else 'Узнать больше'
+        
         prompt = f"""Ты — эксперт по email-маркетингу для мероприятий.
 
-КОНТЕКСТ (релевантные данные из RAG):
+КОНТЕКСТ (релевантные данные из программы и болей HR):
 {context}
 
 ИНСТРУКЦИИ ДЛЯ ПИСЬМА:
 {instructions}
 
+{"КЛЮЧЕВОЕ СООБЩЕНИЕ: " + key_message if key_message else ""}
+{"ПОДСКАЗКА ДЛЯ ТЕМЫ: " + subject_hint if subject_hint else ""}
+
 ЗАДАЧА:
-Создай цепляющее маркетинговое письмо на основе контекста.
+Заполни слоты для email-шаблона. НЕ генерируй HTML! Верни ТОЛЬКО данные для слотов.
 
-Верни JSON в формате:
-{{"subject": "тема письма (до 50 символов)", "html": "HTML код письма с профессиональным дизайном"}}
+СХЕМА СЛОТОВ:
+{json.dumps(slots_schema, ensure_ascii=False, indent=2)}
 
-HTML должен быть адаптивным, с CTA-кнопкой и структурой как у профессиональных email-рассылок.
+ПРАВИЛА:
+1. headline: цепляющий заголовок до 60 символов, говорит про боль HR
+2. intro_text: 2-3 предложения про проблему, которую решает конференция
+3. speakers: массив из 2-3 спикеров из контекста, выбери самых релевантных
+   - Каждый спикер: {{"name": "Имя", "title": "Должность", "pitch": "Что даст доклад (1 предложение)", "photo_url": "https://via.placeholder.com/150"}}
+4. cta_text: текст для кнопки (например: "Посмотреть программу", "Зарегистрироваться")
+5. subject: тема письма до 50 символов
+
+CTA ссылка будет подставлена автоматически: {cta_url}
+Текст CTA по умолчанию: {cta_text_default}
+
+Верни JSON в точном формате:
+{{
+  "subject": "тема письма",
+  "headline": "заголовок",
+  "intro_text": "вступительный текст",
+  "speakers": [
+    {{"name": "...", "title": "...", "pitch": "...", "photo_url": "https://via.placeholder.com/150"}}
+  ],
+  "cta_text": "текст кнопки"
+}}
 """
         
-        generated = call_openrouter(prompt, openrouter_key)
+        generated = call_openai(prompt, openrouter_key)
         
         cur.close()
         conn.close()
         
         try:
-            result_json = json.loads(generated)
+            slots_data = json.loads(generated)
+            
+            slots_data['cta_url'] = cta_url
+            
+            filled_html = fill_html_template(html_layout, slots_data)
+            
             return {
                 'statusCode': 200,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({
                     'success': True,
-                    'subject': result_json.get('subject', ''),
-                    'html': result_json.get('html', ''),
+                    'subject': slots_data.get('subject', subject_hint or 'Письмо сгенерировано'),
+                    'html': filled_html,
+                    'slots_data': slots_data,
                     'template_name': template_name,
                     'rag_context_items': len(rag_results)
                 })
             }
-        except:
+        except Exception as e:
             return {
-                'statusCode': 200,
+                'statusCode': 500,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({
-                    'success': True,
-                    'subject': 'Письмо сгенерировано',
-                    'html': generated,
-                    'template_name': template_name,
-                    'rag_context_items': len(rag_results)
+                    'error': f'Failed to parse AI response: {str(e)}',
+                    'raw_response': generated
                 })
             }
     
@@ -170,6 +229,32 @@ HTML должен быть адаптивным, с CTA-кнопкой и стр
         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
         'body': json.dumps({'error': 'Method not allowed'})
     }
+
+def fill_html_template(html_layout: str, slots_data: Dict[str, Any]) -> str:
+    """Заполняет HTML шаблон данными из слотов"""
+    result = html_layout
+    
+    for key, value in slots_data.items():
+        if isinstance(value, list):
+            if key == 'speakers' and '{{#speakers}}' in result:
+                speakers_block_start = result.find('{{#speakers}}')
+                speakers_block_end = result.find('{{/speakers}}')
+                
+                if speakers_block_start != -1 and speakers_block_end != -1:
+                    template_block = result[speakers_block_start + len('{{#speakers}}'):speakers_block_end]
+                    
+                    rendered_speakers = ''
+                    for speaker in value:
+                        speaker_html = template_block
+                        for sp_key, sp_value in speaker.items():
+                            speaker_html = speaker_html.replace('{{' + sp_key + '}}', str(sp_value))
+                        rendered_speakers += speaker_html
+                    
+                    result = result[:speakers_block_start] + rendered_speakers + result[speakers_block_end + len('{{/speakers}}'):]
+        else:
+            result = result.replace('{{' + key + '}}', str(value))
+    
+    return result
 
 def create_embedding(text: str, api_key: str) -> List[float]:
     """Создаёт эмбеддинг через OpenRouter API"""
@@ -193,7 +278,7 @@ def create_embedding(text: str, api_key: str) -> List[float]:
         result = json.loads(response.read().decode('utf-8'))
         return result['data'][0]['embedding']
 
-def call_openrouter(prompt: str, api_key: str) -> str:
+def call_openai(prompt: str, api_key: str) -> str:
     """Вызывает OpenRouter Chat API"""
     data = {
         'model': 'openai/gpt-4o-mini',
