@@ -65,32 +65,46 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
             }
         
-        prompt = f"""КРИТИЧЕСКИ ВАЖНО: Сохрани ВСЮ структуру HTML от начала до конца. НЕ удаляй footer, CTA-кнопки внизу, контакты, ссылки на отписку.
+        prompt = f"""Ты — эксперт по преобразованию HTML email-шаблонов в Mustache. Твоя задача — сохранить ВСЕЙ HTML КОД ПОЛНОСТЬЮ, заменив ТОЛЬКО текстовые данные на слоты.
 
 HTML для преобразования:
-{html_content[:4000]}
+{html_content[:8000]}
 
-ПРАВИЛА ПРЕОБРАЗОВАНИЯ:
-1. СОХРАНИ ВЕСЬ HTML ПОЛНОСТЬЮ - от <!DOCTYPE> до </html>
-2. ОБЯЗАТЕЛЬНО сохрани:
-   - Все footer блоки с контактами
-   - Все CTA-кнопки (в начале И в конце письма)
-   - Ссылки на отписку
-   - Все статические тексты ("Команда HUMAN", email, телефон)
-3. Замени ТОЛЬКО переменный контент на Mustache слоты:
-   - Заголовки → {{{{headline}}}}
-   - Вступительный текст → {{{{intro_text}}}}
-   - Список спикеров → {{{{#speakers}}}}...{{{{/speakers}}}}
-   - Тексты кнопок → {{{{cta_text}}}}
-   - Ссылки кнопок → {{{{cta_url}}}}
-4. Для спикеров используй ТОЛЬКО эти слоты: {{{{name}}}}, {{{{title}}}}, {{{{pitch}}}}, {{{{photo_url}}}}
-5. НЕ добавляй новые слоты типа {{{{description}}}} - используй только те, что в примере ниже
+КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
 
-Верни ТОЛЬКО валидный JSON в таком формате:
+1. СОХРАНИ АБСОЛЮТНО ВСЁ:
+   - Все <table>, <tr>, <td> теги
+   - Все inline-стили (style="padding: 20px; color: #333;")
+   - Все атрибуты (cellpadding, cellspacing, bgcolor, width)
+   - Все <tr> блоки с footer, контактами, ссылками на отписку
+   - Все CTA-кнопки (включая дублирующиеся в конце письма)
+
+2. НЕ УПРОЩАЙ СТРУКТУРУ:
+   ❌ НЕ удаляй вложенные таблицы
+   ❌ НЕ удаляй footer секции
+   ❌ НЕ удаляй статические тексты ("Команда HUMAN", "e-mail:", "тел:")
+   ❌ НЕ сокращай HTML до <html><body>..., сохрани всю табличную структуру для email
+
+3. ЗАМЕНИ ТОЛЬКО ПЕРЕМЕННЫЕ ДАННЫЕ:
+   ✅ Заголовки → {{{{headline}}}}
+   ✅ Вступительный текст → {{{{intro_text}}}}
+   ✅ Текст кнопок → {{{{cta_text}}}}
+   ✅ Ссылки кнопок → {{{{cta_url}}}}
+   ✅ Список спикеров → {{{{#speakers}}}}...{{{{/speakers}}}} с {{{{name}}}}, {{{{title}}}}, {{{{pitch}}}}, {{{{photo_url}}}}
+
+4. СТАТИЧЕСКИЕ ДАННЫЕ НЕ ТРОГАЙ:
+   - "Команда HUMAN", "e-mail:", "тел:", "Отпишитесь"
+   - Все тексты в footer
+   - Логотипы и изображения компании
+
+5. ДЛИНА HTML:
+   Если оригинал 5000+ символов, твой результат должен быть 4500+ символов (сохрани структуру!).
+
+Верни ТОЛЬКО валидный JSON:
 {{{{
-  "html_layout": "ПОЛНЫЙ HTML со всеми footer, CTA и контактами",
+  "html_layout": "ПОЛНЫЙ HTML код со всеми таблицами, footer и CTA",
   "slots_schema": {{"headline": "string", "intro_text": "string", "speakers": [{{"name": "string", "title": "string", "pitch": "string", "photo_url": "string"}}], "cta_text": "string", "cta_url": "string", "subject": "string"}},
-  "notes": "Что заменил на слоты"
+  "notes": "Краткое описание замен"
 }}}}"""
         
         try:
@@ -181,12 +195,12 @@ HTML для преобразования:
         'body': json.dumps({'error': 'Method not allowed'})
     }
 
-def call_openrouter(prompt: str, api_key: str) -> str:
+def call_openrouter(prompt: str, api_key: str, model: str = 'anthropic/claude-3.5-sonnet') -> str:
     """Вызывает OpenRouter Chat API"""
     data = {
-        'model': 'openai/gpt-4o-mini',
+        'model': model,
         'messages': [{'role': 'user', 'content': prompt}],
-        'temperature': 0.3
+        'temperature': 0.2
     }
     
     req = urllib.request.Request(
