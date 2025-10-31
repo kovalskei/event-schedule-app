@@ -121,64 +121,88 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 def convert_to_template(html: str) -> str:
     """
-    Преобразует HTML в Mustache шаблон по жёстким правилам (regex)
+    Преобразует HTML в Mustache шаблон - ищет ЛЮБЫЕ текстовые блоки
     
     Правила:
-    1. Заголовки <h1>, <h2> → {{intro_heading}}
-    2. Первый <p> после заголовка → {{intro_text}}
-    3. href="#" в кнопке → {{cta_url}}
-    4. Текст кнопки → {{cta_text}}
-    5. Подзаголовки → {{subheading}}
-    6. Блоки спикеров → {{#speakers}}...{{/speakers}}
+    1. Все <h1>, <h2>, <h3> → {{intro_heading}}, {{subheading}}
+    2. Все <p> с текстом >20 символов → {{intro_text}}, {{description}}
+    3. Все <a> с href → {{cta_url}}, текст → {{cta_text}}
+    4. Все <td> с текстом → {{speaker_name}}, {{speaker_title}}
+    5. Все <img> → src={{photo_url}}, alt={{name}}
     """
     result = html
+    replacements = []
     
-    result = re.sub(
-        r'<h1[^>]*>.*?</h1>',
-        '<h1>{{intro_heading}}</h1>',
-        result,
-        count=1,
-        flags=re.DOTALL | re.IGNORECASE
-    )
+    # 1. Заменяем ВСЕ заголовки на слоты
+    h1_count = 0
+    def replace_h1(match):
+        nonlocal h1_count
+        h1_count += 1
+        tag = match.group(1)
+        content = match.group(2)
+        if h1_count == 1:
+            return f'<{tag}>{{{{intro_heading}}}}</{tag}>'
+        else:
+            return f'<{tag}>{{{{subheading_{h1_count}}}}}</{tag}>'
     
-    result = re.sub(
-        r'(<h[12][^>]*>.*?</h[12]>)\s*<p[^>]*>(.*?)</p>',
-        r'\1<p>{{intro_text}}</p>',
-        result,
-        count=1,
-        flags=re.DOTALL | re.IGNORECASE
-    )
+    result = re.sub(r'<(h[1-3][^>]*)>(.*?)</\1>', replace_h1, result, flags=re.DOTALL | re.IGNORECASE)
+    replacements.append(f"Заголовки: {h1_count} → слоты")
     
-    result = re.sub(
-        r'<a\s+([^>]*href=)["\']#["\']([^>]*)>(.*?)</a>',
-        r'<a \1"{{cta_url}}"\2>{{cta_text}}</a>',
-        result,
-        count=1,
-        flags=re.DOTALL | re.IGNORECASE
-    )
+    # 2. Заменяем ВСЕ параграфы с длинным текстом
+    p_count = 0
+    def replace_p(match):
+        nonlocal p_count
+        content = match.group(2).strip()
+        if len(content) > 20 and not '{{' in content:
+            p_count += 1
+            attrs = match.group(1)
+            if p_count == 1:
+                return f'<p{attrs}>{{{{intro_text}}}}</p>'
+            else:
+                return f'<p{attrs}>{{{{description_{p_count}}}}}</p>'
+        return match.group(0)
     
-    result = re.sub(
-        r'<h2[^>]*>.*?</h2>',
-        '<h2>{{subheading}}</h2>',
-        result,
-        count=1,
-        flags=re.DOTALL | re.IGNORECASE
-    )
+    result = re.sub(r'<p([^>]*)>(.*?)</p>', replace_p, result, flags=re.DOTALL | re.IGNORECASE)
+    replacements.append(f"Параграфы: {p_count} → слоты")
     
-    if 'спикер' in result.lower() or 'speaker' in result.lower():
-        speaker_pattern = r'(<!--\s*Спикер.*?-->.*?</tr>)'
-        matches = list(re.finditer(speaker_pattern, result, re.DOTALL | re.IGNORECASE))
-        
-        if len(matches) >= 2:
-            first_start = matches[0].start()
-            last_end = matches[-1].end()
-            
+    # 3. Заменяем ВСЕ ссылки
+    a_count = 0
+    def replace_a(match):
+        nonlocal a_count
+        a_count += 1
+        before_href = match.group(1) if match.group(1) else ''
+        after_href = match.group(2) if match.group(2) else ''
+        if a_count == 1:
+            return f'<a {before_href}href="{{{{cta_url}}}}"{after_href}>{{{{cta_text}}}}</a>'
+        else:
+            return f'<a {before_href}href="{{{{link_url_{a_count}}}}}"{after_href}>{{{{link_text_{a_count}}}}}</a>'
+    
+    result = re.sub(r'<a\s+([^>]*?)href=["\'][^"\']*["\']([^>]*)>(.*?)</a>', replace_a, result, flags=re.DOTALL | re.IGNORECASE)
+    replacements.append(f"Ссылки: {a_count} → слоты")
+    
+    # 4. Заменяем изображения
+    img_count = 0
+    def replace_img(match):
+        nonlocal img_count
+        img_count += 1
+        attrs_before = match.group(1) if match.group(1) else ''
+        attrs_after = match.group(2) if match.group(2) else ''
+        return f'<img {attrs_before}src="{{{{photo_url}}}}" alt="{{{{name}}}}"{attrs_after}'
+    
+    result = re.sub(r'<img\s+([^>]*?)src=["\'][^"\']*["\']([^>]*)', replace_img, result, flags=re.IGNORECASE)
+    replacements.append(f"Изображения: {img_count} → слоты")
+    
+    # 5. Оборачиваем повторяющиеся блоки в {{#speakers}}
+    if '<!-- Спикер' in html or 'speaker' in html.lower():
+        speaker_matches = list(re.finditer(r'(<!--\s*Спикер.*?-->.*?</tr>)', result, re.DOTALL | re.IGNORECASE))
+        if len(speaker_matches) >= 2:
+            first_start = speaker_matches[0].start()
+            last_end = speaker_matches[-1].end()
             speaker_block = result[first_start:last_end]
-            speaker_block = re.sub(r'<img\s+src="[^"]*"', '<img src="{{photo_url}}"', speaker_block, count=1)
-            speaker_block = re.sub(r'alt="[^"]*"', 'alt="{{name}}"', speaker_block, count=1)
-            
             result = result[:first_start] + '{{#speakers}}' + speaker_block + '{{/speakers}}' + result[last_end:]
+            replacements.append(f"Спикеры: обёрнуто {len(speaker_matches)} блоков")
     
-    print(f"[INFO] Template conversion complete. Original: {len(html)} chars, Result: {len(result)} chars")
+    diff = len(html) - len(result)
+    print(f"[INFO] Замены: {', '.join(replacements)}. Разница: {diff} символов")
     
     return result
