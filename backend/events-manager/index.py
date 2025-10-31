@@ -664,24 +664,36 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 print(f'[DEBUG] program_topics count: {len(program_topics)}')
                 print(f'[DEBUG] pain_points count: {len(pain_points)}')
                 
-                ai_api_key = os.environ.get('OPENAI_API_KEY')
-                
                 # Получаем AI настройки из mailing_list
+                cur.execute('''
+                    SELECT ai_provider, ai_model, ai_assistant_id
+                    FROM event_mailing_lists
+                    WHERE id = %s
+                ''', (list_id,))
+                
+                ai_settings = cur.fetchone()
+                ai_provider = ai_settings['ai_provider'] if ai_settings else 'openai'
+                ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
+                
                 openrouter_key = os.environ.get('OPENROUTER_API_KEY')
                 openai_key = os.environ.get('OPENAI_API_KEY')
                 
                 if openrouter_key:
                     api_key = openrouter_key
                     api_url = 'https://openrouter.ai/api/v1/chat/completions'
+                    provider = 'openrouter'
                 elif openai_key:
                     api_key = openai_key
                     api_url = 'https://api.openai.com/v1/chat/completions'
+                    provider = 'openai'
                 else:
                     return {
                         'statusCode': 500,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                         'body': json.dumps({'error': 'No AI API key configured'})
                     }
+                
+                print(f'[AI] Using provider={provider}, model={ai_model}, api_url={api_url}')
                 
                 created_count = 0
                 skipped_count = 0
@@ -737,55 +749,65 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 НЕ пиши HTML, НЕ добавляй лишнего текста — только JSON."""
                     
                     try:
-                        ai_response = requests.post(
+                        request_payload = {
+                            'model': ai_model,
+                            'messages': [
+                                {'role': 'system', 'content': 'Ты эксперт по email-маркетингу. Возвращаешь ТОЛЬКО валидный JSON, без комментариев.'},
+                                {'role': 'user', 'content': user_prompt}
+                            ],
+                            'temperature': 0.9,
+                            'max_tokens': 1500
+                        }
+                        
+                        req = urllib.request.Request(
                             api_url,
+                            data=json.dumps(request_payload).encode('utf-8'),
                             headers={
-                                'Authorization': f'Bearer {api_key}',
-                                'Content-Type': 'application/json'
-                            },
-                            json={
-                                'model': 'gpt-4o-mini',
-                                'messages': [
-                                    {'role': 'system', 'content': 'Ты эксперт по email-маркетингу. Возвращаешь ТОЛЬКО валидный JSON, без комментариев.'},
-                                    {'role': 'user', 'content': user_prompt}
-                                ],
-                                'temperature': 0.9,
-                                'max_tokens': 1500
-                            },
-                            timeout=60
+                                'Content-Type': 'application/json',
+                                'Authorization': f'Bearer {api_key}'
+                            }
                         )
                         
-                        if ai_response.status_code != 200:
-                            print(f'[ERROR] AI API error: {ai_response.status_code} - {ai_response.text}')
-                            continue
-                        
-                        ai_content = ai_response.json()['choices'][0]['message']['content']
-                        
-                        # Парсим JSON из ответа AI
-                        import re
-                        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', ai_content, re.DOTALL)
-                        if json_match:
-                            result = json.loads(json_match.group())
-                            ai_subject = result.get('subject', template_name)
-                            ai_pain_points = result.get('pain_points', '')
-                            ai_program_topics = result.get('program_topics', '')
+                        with urllib.request.urlopen(req, timeout=60) as response:
+                            result = json.loads(response.read().decode('utf-8'))
+                            ai_content = result['choices'][0]['message']['content']
                             
-                            # Подставляем AI-контент в готовый HTML-шаблон
-                            final_html = html_template.replace('{pain_points}', ai_pain_points)
-                            final_html = final_html.replace('{program_topics}', ai_program_topics)
+                            # Парсим JSON из ответа AI
+                            import re
+                            ai_content = ai_content.strip()
+                            if ai_content.startswith('```json'):
+                                ai_content = ai_content[7:]
+                            if ai_content.startswith('```'):
+                                ai_content = ai_content[3:]
+                            if ai_content.endswith('```'):
+                                ai_content = ai_content[:-3]
+                            ai_content = ai_content.strip()
                             
-                            final_subject = subject_template.replace('{pain_points}', ai_subject)
-                            final_subject = final_subject.replace('{program_topics}', ai_subject)
-                            
-                            # Если в subject_template нет плейсхолдеров, используем AI subject
-                            if '{' not in subject_template:
-                                final_subject = ai_subject
-                        else:
-                            print(f'[ERROR] Failed to parse AI response JSON: {ai_content[:200]}')
-                            continue
+                            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', ai_content, re.DOTALL)
+                            if json_match:
+                                result = json.loads(json_match.group())
+                                ai_subject = result.get('subject', template_name)
+                                ai_pain_points = result.get('pain_points', '')
+                                ai_program_topics = result.get('program_topics', '')
+                                
+                                # Подставляем AI-контент в готовый HTML-шаблон
+                                final_html = html_template.replace('{pain_points}', ai_pain_points)
+                                final_html = final_html.replace('{program_topics}', ai_program_topics)
+                                
+                                final_subject = subject_template.replace('{pain_points}', ai_subject)
+                                final_subject = final_subject.replace('{program_topics}', ai_subject)
+                                
+                                # Если в subject_template нет плейсхолдеров, используем AI subject
+                                if '{' not in subject_template:
+                                    final_subject = ai_subject
+                            else:
+                                print(f'[ERROR] Failed to parse AI response JSON: {ai_content[:200]}')
+                                continue
                         
                     except Exception as e:
                         print(f'[ERROR] AI generation failed: {type(e).__name__} - {str(e)}')
+                        import traceback
+                        traceback.print_exc()
                         continue
                     
                     cur.execute('''
