@@ -210,7 +210,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     }
 
 def extract_style_snippets(html_templates: List[str]) -> List[str]:
-    """Извлекает характерные фразы и стилистические паттерны из HTML шаблонов"""
+    """Извлекает тон и стиль общения из HTML шаблонов (без CTA и структурных элементов)"""
     snippets = []
     
     for html in html_templates:
@@ -224,24 +224,36 @@ def extract_style_snippets(html_templates: List[str]) -> List[str]:
         for sent in sentences:
             sent = sent.strip()
             
-            if len(sent) < 20 or len(sent) > 300:
+            if len(sent) < 30 or len(sent) > 250:
                 continue
             
-            if any(keyword in sent.lower() for keyword in [
-                'привет', 'здравствуй', 'добрый', 'уважаем', 'дорог',
-                'рад', 'приглаш', 'ждём', 'встреч', 'возможност',
-                'не упусти', 'успе', 'зарегистр', 'билет'
-            ]):
-                if sent not in snippets:
+            if re.search(r'(регистр|билет|ссылк|кнопк|переход|смотр|подробн)', sent, re.IGNORECASE):
+                continue
+            
+            style_indicators = [
+                'рад', 'расскажем', 'поделимся', 'узнаете', 'разберём',
+                'важно', 'полезн', 'интересн', 'уникальн', 'эксклюзив',
+                'друзья', 'коллеги', 'сообщество', 'вместе',
+                'опыт', 'знания', 'практик', 'кейс', 'история'
+            ]
+            
+            if any(keyword in sent.lower() for keyword in style_indicators):
+                if sent not in snippets and len(snippets) < 15:
                     snippets.append(sent)
         
-        greeting_match = re.search(r'(Привет[^.!?]{10,150}[.!?])', text, re.IGNORECASE)
-        if greeting_match and greeting_match.group(1) not in snippets:
-            snippets.append(greeting_match.group(1))
+        greeting_pattern = r'((?:Привет|Здравствуй|Дорог|Уважаем)[^.!?]{20,200}[.!?])'
+        greeting_match = re.search(greeting_pattern, text, re.IGNORECASE)
+        if greeting_match:
+            greeting = greeting_match.group(1).strip()
+            if greeting not in snippets and len(snippets) < 15:
+                snippets.insert(0, greeting)
         
-        cta_match = re.search(r'(Зарегистр[^.!?]{10,150}[.!?])', text, re.IGNORECASE)
-        if cta_match and cta_match.group(1) not in snippets:
-            snippets.append(cta_match.group(1))
+        intro_pattern = r'([^.!?]{20,200}(?:рады|приглашаем|ждём|хотим поделиться)[^.!?]{20,200}[.!?])'
+        intro_match = re.search(intro_pattern, text, re.IGNORECASE)
+        if intro_match:
+            intro = intro_match.group(1).strip()
+            if intro not in snippets and len(snippets) < 15:
+                snippets.append(intro)
     
     return snippets[:15]
 
