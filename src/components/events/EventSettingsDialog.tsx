@@ -465,11 +465,6 @@ export default function EventSettingsDialog({
       return;
     }
 
-    if (editingTemplate) {
-      sonnerToast.error('Выйдите из режима редактирования перед генерацией нового шаблона');
-      return;
-    }
-
     setGeneratingTemplate(true);
     try {
       const requestBody = { 
@@ -498,7 +493,7 @@ export default function EventSettingsDialog({
         throw new Error(data.error);
       }
 
-      sonnerToast.success('Новый шаблон создан!', {
+      sonnerToast.success(editingTemplate ? 'Шаблон преобразован!' : 'Новый шаблон создан!', {
         description: `Оригинал сохранён как пример для валидации. ${data.notes || ''}`,
       });
 
@@ -509,6 +504,10 @@ export default function EventSettingsDialog({
         subject_template: '',
         instructions: '',
       });
+      
+      if (editingTemplate) {
+        setEditingTemplate(null);
+      }
 
       loadEventSettings();
     } catch (error: any) {
@@ -1193,22 +1192,42 @@ export default function EventSettingsDialog({
                       />
                     </div>
 
-                    {editingTemplate ? (
-                      <div className="flex gap-2">
-                        <Button onClick={handleUpdateTemplate} disabled={loading}>
-                          <Icon name="Save" className="w-4 h-4 mr-2" />
-                          Обновить шаблон
-                        </Button>
-                        <Button variant="outline" onClick={handleCancelEdit}>
-                          Отмена
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button onClick={handleCreateTemplate} disabled={loading}>
-                        <Icon name="Plus" className="w-4 h-4 mr-2" />
-                        Создать шаблон
-                      </Button>
-                    )}
+                    <div className="flex gap-2">
+                      {editingTemplate ? (
+                        <>
+                          <Button onClick={handleUpdateTemplate} disabled={loading}>
+                            <Icon name="Save" className="w-4 h-4 mr-2" />
+                            Сохранить изменения
+                          </Button>
+                          <Button 
+                            onClick={handleGenerateTemplate} 
+                            disabled={loading || generatingTemplate}
+                            variant="outline"
+                          >
+                            <Icon name="Wand2" className="w-4 h-4 mr-2" />
+                            {generatingTemplate ? 'Преобразование...' : 'Преобразовать со слотами'}
+                          </Button>
+                          <Button variant="outline" onClick={handleCancelEdit}>
+                            Отмена
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button onClick={handleCreateTemplate} disabled={loading}>
+                            <Icon name="Plus" className="w-4 h-4 mr-2" />
+                            Создать шаблон
+                          </Button>
+                          <Button 
+                            onClick={handleGenerateTemplate} 
+                            disabled={loading || generatingTemplate}
+                            variant="outline"
+                          >
+                            <Icon name="Wand2" className="w-4 h-4 mr-2" />
+                            {generatingTemplate ? 'Преобразование...' : 'Преобразовать со слотами'}
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="border-t pt-4 text-center text-gray-500">
