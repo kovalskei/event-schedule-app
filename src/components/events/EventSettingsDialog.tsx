@@ -391,6 +391,11 @@ export default function EventSettingsDialog({
       return;
     }
 
+    if (editingTemplate) {
+      sonnerToast.error('Выйдите из режима редактирования перед генерацией нового шаблона');
+      return;
+    }
+
     setGeneratingTemplate(true);
     try {
       const res = await fetch(TEMPLATE_GENERATOR_URL, {

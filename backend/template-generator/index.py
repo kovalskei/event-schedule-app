@@ -65,75 +65,38 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
             }
         
-        prompt = f"""Ты — эксперт по преобразованию HTML email-шаблонов в структурированные шаблоны со слотами.
+        prompt = f"""Преобразуй HTML в Mustache шаблон. Верни ТОЛЬКО валидный JSON без текста.
 
-ЗАДАЧА:
-Преобразуй этот HTML шаблон в формат Mustache (слоты) для автоматической генерации писем.
+HTML:
+{html_content[:2000]}
 
-ИСХОДНЫЙ HTML:
-{html_content}
+Замени динамический контент на {{{{слоты}}}}: headline, intro_text, #speakers (name, title, pitch), cta_text, cta_url
 
-ПРАВИЛА ПРЕОБРАЗОВАНИЯ:
-1. Определи динамические части контента (заголовки, текст, списки)
-2. Замени их на слоты Mustache: {{{{slot_name}}}}
-3. Для повторяющихся блоков используй: {{{{#items}}}}...{{{{/items}}}}
-4. Сохрани всю CSS стилизацию БЕЗ изменений
-5. Сохрани структуру таблиц для email-вёрстки
-
-СТАНДАРТНЫЕ СЛОТЫ:
-- {{{{headline}}}} — главный заголовок
-- {{{{intro_text}}}} — вступительный текст (2-3 предложения)
-- {{{{#speakers}}}} — блок спикеров (повторяющийся)
-  - {{{{name}}}} — имя спикера
-  - {{{{title}}}} — должность
-  - {{{{pitch}}}} — описание доклада (1 предложение)
-  - {{{{photo_url}}}} — фото спикера
-- {{{{cta_text}}}} — текст кнопки призыва к действию
-- {{{{cta_url}}}} — ссылка кнопки
-
-ДОПОЛНИТЕЛЬНЫЕ СЛОТЫ (если нужны):
-- {{{{event_name}}}} — название мероприятия
-- {{{{event_date}}}} — дата
-- {{{{logo_url}}}} — логотип
-- {{{{unsubscribe_url}}}} — ссылка отписки
-
-Верни JSON в формате:
+Формат ответа (ТОЛЬКО JSON):
 {{{{
-  "html_layout": "HTML с Mustache слотами",
-  "slots_schema": {{{{
-    "headline": "string",
-    "intro_text": "string",
-    "speakers": [{{{{
-      "name": "string",
-      "title": "string", 
-      "pitch": "string",
-      "photo_url": "string"
-    }}}}],
-    "cta_text": "string",
-    "cta_url": "string",
-    "subject": "string"
-  }}}},
-  "recommended_slots": ["список слотов которые ты определил"],
-  "notes": "Краткие пояснения об изменениях"
-}}}}
-
-ВАЖНО: 
-- НЕ меняй CSS стили
-- НЕ меняй структуру таблиц
-- Сохрани все атрибуты HTML (style, width, cellpadding и тд)
-"""
+  "html_layout": "HTML с {{{{слотами}}}}",
+  "slots_schema": {{"headline": "string", "intro_text": "string", "speakers": [{{"name": "string", "title": "string", "pitch": "string", "photo_url": "string"}}], "cta_text": "string", "cta_url": "string", "subject": "string"}},
+  "notes": "Кратко"
+}}}}"""
         
         try:
             generated = call_openrouter(prompt, openrouter_key)
             
             json_str = generated.strip()
-            if json_str.startswith('```json'):
-                json_str = json_str[7:]
-            if json_str.startswith('```'):
-                json_str = json_str[3:]
-            if json_str.endswith('```'):
-                json_str = json_str[:-3]
-            json_str = json_str.strip()
+            
+            if '```json' in json_str:
+                start = json_str.find('```json') + 7
+                end = json_str.find('```', start)
+                json_str = json_str[start:end].strip()
+            elif '```' in json_str:
+                start = json_str.find('```') + 3
+                end = json_str.find('```', start)
+                json_str = json_str[start:end].strip()
+            
+            json_start = json_str.find('{')
+            json_end = json_str.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                json_str = json_str[json_start:json_end]
             
             result = json.loads(json_str)
             
@@ -144,7 +107,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             cur = conn.cursor()
             
             cur.execute(
-                "SELECT email_template_examples FROM t_p22819116_event_schedule_app.events WHERE id = " + str(event_id)
+                "SELECT email_template_examples FROM t_p22819116_event_schedule_app.events WHERE id = %s",
+                (event_id,)
             )
             examples_row = cur.fetchone()
             
@@ -152,17 +116,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             updated_examples = existing_examples + '\n\n--- НОВЫЙ ПРИМЕР ---\n' + html_content if existing_examples else html_content
             
             cur.execute(
-                "UPDATE t_p22819116_event_schedule_app.events SET email_template_examples = '" + 
-                updated_examples.replace("'", "''") + "' WHERE id = " + str(event_id)
+                "UPDATE t_p22819116_event_schedule_app.events SET email_template_examples = %s WHERE id = %s",
+                (updated_examples, event_id)
             )
             
             cur.execute(
                 "INSERT INTO t_p22819116_event_schedule_app.email_templates " +
-                "(event_id, content_type_id, name, html_template, html_layout, slots_schema, instructions) VALUES (" +
-                str(event_id) + ", " + str(content_type_id) + ", '" + template_name.replace("'", "''") + 
-                "', '', '" + html_layout.replace("'", "''") + "', '" + 
-                json.dumps(slots_schema, ensure_ascii=False).replace("'", "''") + 
-                "', 'Автоматически сгенерирован из HTML примера') RETURNING id"
+                "(event_id, content_type_id, name, html_template, html_layout, slots_schema, instructions) VALUES " +
+                "(%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                (event_id, content_type_id, template_name, '', html_layout, json.dumps(slots_schema), 'Автоматически сгенерирован из HTML примера')
             )
             
             new_template_id = cur.fetchone()[0]
@@ -177,10 +139,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({
                     'success': True,
                     'template_id': new_template_id,
-                    'html_layout': html_layout,
+                    'html_layout': html_layout[:500] + '...' if len(html_layout) > 500 else html_layout,
                     'slots_schema': slots_schema,
-                    'recommended_slots': result.get('recommended_slots', []),
-                    'notes': result.get('notes', ''),
+                    'notes': result.get('notes', 'Шаблон преобразован'),
                     'original_saved': True
                 })
             }
@@ -219,6 +180,6 @@ def call_openrouter(prompt: str, api_key: str) -> str:
         }
     )
     
-    with urllib.request.urlopen(req) as response:
+    with urllib.request.urlopen(req, timeout=25) as response:
         result = json.loads(response.read().decode('utf-8'))
         return result['choices'][0]['message']['content']
