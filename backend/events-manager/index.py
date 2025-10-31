@@ -8,6 +8,13 @@ import urllib.parse
 import csv
 from io import StringIO
 
+try:
+    from v2_pipeline import generate_email_v2
+    V2_AVAILABLE = True
+except ImportError:
+    V2_AVAILABLE = False
+    print('[WARN] V2 pipeline not available, using legacy generation')
+
 def extract_meta_from_csv(csv_content: str) -> Dict[str, str]:
     """Извлекает метаданные из CSV в формате A (ключ) -> B (значение)"""
     meta = {}
@@ -603,6 +610,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             elif action == 'generate_drafts':
                 list_id = body_data.get('list_id')
+                use_v2 = body_data.get('use_v2', True)
                 
                 if not list_id:
                     return {
@@ -616,7 +624,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         eml.*,
                         e.program_doc_id,
                         e.pain_doc_id,
-                        e.default_tone
+                        e.default_tone,
+                        e.id as event_id
                     FROM event_mailing_lists eml
                     JOIN events e ON e.id = eml.event_id
                     WHERE eml.id = %s
@@ -641,6 +650,54 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 event_id = mailing_list['event_id']
+                
+                if use_v2 and V2_AVAILABLE:
+                    print('[INFO] Using V2 pipeline with RAG')
+                    created_count = 0
+                    errors = []
+                    
+                    for content_type_id in content_type_ids:
+                        cur.execute('''
+                            INSERT INTO content_plan (event_id, list_id, content_type_id, title, segment, status)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                        ''', (event_id, list_id, content_type_id, 'Draft', '', 'draft'))
+                        
+                        plan_id = cur.fetchone()[0]
+                        conn.commit()
+                        
+                        try:
+                            result = generate_email_v2(conn, plan_id, variant_index=0)
+                            
+                            if result['success']:
+                                created_count += 1
+                                print(f'[V2] Created email for content_type={content_type_id}')
+                            else:
+                                errors.append(f"Type {content_type_id}: {result.get('error', 'Unknown error')}")
+                                print(f'[V2] Failed for content_type={content_type_id}: {result.get("error")}')
+                        
+                        except Exception as e:
+                            errors.append(f"Type {content_type_id}: {str(e)}")
+                            print(f'[V2] Exception for content_type={content_type_id}: {str(e)}')
+                    
+                    conn.commit()
+                    
+                    message = f'Создано: {created_count} (V2 RAG)'
+                    if errors:
+                        message += f', ошибки: {len(errors)}'
+                    
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({
+                            'count': created_count, 
+                            'errors': errors,
+                            'message': message,
+                            'version': 'v2'
+                        })
+                    }
+                
+                print('[INFO] Using legacy pipeline')
                 program_doc_id = mailing_list['program_doc_id']
                 pain_doc_id = mailing_list['pain_doc_id']
                 
