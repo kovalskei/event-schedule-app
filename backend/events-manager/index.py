@@ -664,16 +664,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 print(f'[DEBUG] program_topics count: {len(program_topics)}')
                 print(f'[DEBUG] pain_points count: {len(pain_points)}')
                 
-                # Получаем AI настройки из mailing_list
+                # Получаем AI настройки: сначала из мероприятия, потом переопределение из списка
                 cur.execute('''
-                    SELECT ai_provider, ai_model, ai_assistant_id
-                    FROM event_mailing_lists
-                    WHERE id = %s
+                    SELECT e.ai_provider, e.ai_model, e.ai_assistant_id,
+                           ml.ai_provider as list_ai_provider, 
+                           ml.ai_model as list_ai_model,
+                           ml.ai_assistant_id as list_ai_assistant_id
+                    FROM event_mailing_lists ml
+                    JOIN events e ON e.id = ml.event_id
+                    WHERE ml.id = %s
                 ''', (list_id,))
                 
-                ai_settings = cur.fetchone()
-                ai_provider = ai_settings['ai_provider'] if ai_settings else 'openai'
-                ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
+                settings = cur.fetchone()
+                
+                # Приоритет: настройки списка > настройки мероприятия > дефолт
+                ai_provider = settings.get('list_ai_provider') or settings.get('ai_provider') or 'openai'
+                ai_model = settings.get('list_ai_model') or settings.get('ai_model') or 'gpt-4o-mini'
+                ai_assistant_id = settings.get('list_ai_assistant_id') or settings.get('ai_assistant_id') or None
                 
                 openrouter_key = os.environ.get('OPENROUTER_API_KEY')
                 openai_key = os.environ.get('OPENAI_API_KEY')
@@ -991,16 +998,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 print(f'[CONTENT_PLAN] Found {len(rows)} valid rows')
                 
+                # Получаем AI настройки: сначала из мероприятия, потом переопределение из списка
                 cur.execute('''
-                    SELECT ai_provider, ai_model, ai_assistant_id
-                    FROM event_mailing_lists
-                    WHERE id = %s
+                    SELECT e.ai_provider, e.ai_model, e.ai_assistant_id,
+                           ml.ai_provider as list_ai_provider, 
+                           ml.ai_model as list_ai_model,
+                           ml.ai_assistant_id as list_ai_assistant_id
+                    FROM event_mailing_lists ml
+                    JOIN events e ON e.id = ml.event_id
+                    WHERE ml.id = %s
                 ''', (event_list_id,))
                 
-                ai_settings = cur.fetchone()
-                ai_provider = ai_settings['ai_provider'] if ai_settings else 'openai'
-                ai_model = ai_settings['ai_model'] if ai_settings else 'gpt-4o-mini'
-                ai_assistant_id = ai_settings['ai_assistant_id'] if ai_settings else ''
+                settings = cur.fetchone()
+                
+                # Приоритет: настройки списка > настройки мероприятия > дефолт
+                ai_provider = settings.get('list_ai_provider') or settings.get('ai_provider') or 'openai'
+                ai_model = settings.get('list_ai_model') or settings.get('ai_model') or 'gpt-4o-mini'
+                ai_assistant_id = settings.get('list_ai_assistant_id') or settings.get('ai_assistant_id') or ''
                 
                 # Используем OpenRouter для обхода региональных ограничений
                 openrouter_key = os.environ.get('OPENROUTER_API_KEY')
