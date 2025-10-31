@@ -84,6 +84,8 @@ export default function EventSettingsDialog({
     instructions: '',
   });
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
+  const [previewHtml, setPreviewHtml] = useState('');
   const templateFormRef = useRef<HTMLDivElement>(null);
   const contentTypeFormRef = useRef<HTMLDivElement>(null);
 
@@ -337,6 +339,78 @@ export default function EventSettingsDialog({
       subject_template: '',
       instructions: '',
     });
+  };
+
+  const handlePreviewTemplate = (template: EmailTemplate) => {
+    const testData = generateTestData(template.html_template);
+    const renderedHtml = renderMustache(template.html_template, testData);
+    setPreviewTemplate(template);
+    setPreviewHtml(renderedHtml);
+  };
+
+  const generateTestData = (htmlTemplate: string): Record<string, any> => {
+    const testData: Record<string, any> = {};
+    const mustacheRegex = /\{\{\{?([^}]+)\}?\}\}/g;
+    let match;
+
+    while ((match = mustacheRegex.exec(htmlTemplate)) !== null) {
+      const key = match[1].trim();
+      
+      if (key.startsWith('#') || key.startsWith('/') || key.startsWith('^') || key.startsWith('!')) continue;
+      
+      if (key === 'headline') testData[key] = 'Заголовок мероприятия';
+      else if (key === 'intro_text') testData[key] = 'Приглашаем вас на интересное мероприятие, где мы обсудим актуальные темы и поделимся опытом.';
+      else if (key === 'subject') testData[key] = 'Тема письма: Приглашение на мероприятие';
+      else if (key === 'cta_text') testData[key] = 'Зарегистрироваться';
+      else if (key === 'cta_url') testData[key] = 'https://example.com/register';
+      else if (key === 'event_date') testData[key] = '15 ноября 2025';
+      else if (key === 'event_time') testData[key] = '10:00 - 18:00';
+      else if (key === 'event_location') testData[key] = 'Москва, ул. Примерная, 1';
+      else if (key === 'speakers') {
+        testData[key] = [
+          {
+            name: 'Иван Иванов',
+            title: 'Директор по развитию',
+            pitch: 'Эксперт в области управления проектами с 15-летним опытом',
+            photo_url: 'https://via.placeholder.com/100'
+          },
+          {
+            name: 'Мария Петрова',
+            title: 'Руководитель отдела HR',
+            pitch: 'Специалист по развитию персонала и корпоративной культуре',
+            photo_url: 'https://via.placeholder.com/100'
+          }
+        ];
+      }
+      else testData[key] = `Тестовое значение для ${key}`;
+    }
+
+    return testData;
+  };
+
+  const renderMustache = (template: string, data: Record<string, any>): string => {
+    let result = template;
+    
+    Object.keys(data).forEach(key => {
+      const value = data[key];
+      
+      if (Array.isArray(value)) {
+        const sectionRegex = new RegExp(`\\{\\{#${key}\\}\\}([\\s\\S]*?)\\{\\{\\/${key}\\}\\}`, 'g');
+        result = result.replace(sectionRegex, (match, inner) => {
+          return value.map(item => {
+            let itemHtml = inner;
+            Object.keys(item).forEach(itemKey => {
+              itemHtml = itemHtml.replace(new RegExp(`\\{\\{${itemKey}\\}\\}`, 'g'), item[itemKey]);
+            });
+            return itemHtml;
+          }).join('');
+        });
+      } else {
+        result = result.replace(new RegExp(`\\{\\{\\{?${key}\\}?\\}\\}`, 'g'), value);
+      }
+    });
+    
+    return result;
   };
 
   const handleDeleteTemplate = async (templateId: number, templateName: string) => {
@@ -965,6 +1039,15 @@ export default function EventSettingsDialog({
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => handlePreviewTemplate(template)}
+                            disabled={loading}
+                            title="Предпросмотр с тестовыми данными"
+                          >
+                            <Icon name="Eye" className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleEditTemplate(template)}
                             disabled={loading}
                           >
@@ -1128,6 +1211,31 @@ export default function EventSettingsDialog({
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {previewTemplate && (
+        <Dialog open={!!previewTemplate} onOpenChange={() => { setPreviewTemplate(null); setPreviewHtml(''); }}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Предпросмотр: {previewTemplate.name}</DialogTitle>
+              <div className="text-sm text-gray-500">
+                Шаблон с тестовыми данными
+              </div>
+            </DialogHeader>
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <div className="mb-4 pb-4 border-b">
+                <div className="text-sm font-semibold text-gray-700">Тема письма:</div>
+                <div className="text-sm text-gray-600 mt-1">
+                  {renderMustache(previewTemplate.subject_template, generateTestData(previewTemplate.subject_template))}
+                </div>
+              </div>
+              <div 
+                className="bg-white border rounded overflow-auto"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   );
 }
