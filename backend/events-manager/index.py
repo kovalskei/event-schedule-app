@@ -289,6 +289,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 default_tone = body_data.get('default_tone', 'professional')
                 email_template_examples = body_data.get('email_template_examples', '')
                 logo_url = body_data.get('logo_url', '')
+                use_v2_pipeline = body_data.get('use_v2_pipeline', False)
                 
                 if not name or not start_date or not end_date:
                     return {
@@ -298,10 +299,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    INSERT INTO events (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples, logo_url)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO t_p22819116_event_schedule_app.events (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples, logo_url, use_v2_pipeline)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
-                ''', (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples, logo_url))
+                ''', (name, start_date, end_date, program_doc_id, pain_doc_id, default_tone, email_template_examples, logo_url, use_v2_pipeline))
                 
                 event_id = cur.fetchone()['id']
                 conn.commit()
@@ -1315,7 +1316,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 print(f'[SINGLE_EMAIL] Generating for title="{title}", type="{content_type_name}"')
                 
-                cur.execute('SELECT program_doc_id, pain_doc_id, logo_url FROM events WHERE id = %s', (event_id,))
+                cur.execute('SELECT program_doc_id, pain_doc_id, logo_url, use_v2_pipeline FROM t_p22819116_event_schedule_app.events WHERE id = %s', (event_id,))
                 event_row = cur.fetchone()
                 
                 if not event_row:
@@ -1561,7 +1562,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 update_fields = []
                 values = []
                 
-                for field in ['name', 'description', 'start_date', 'end_date', 'program_doc_id', 'pain_doc_id', 'default_tone', 'email_template_examples', 'logo_url']:
+                for field in ['name', 'description', 'start_date', 'end_date', 'program_doc_id', 'pain_doc_id', 'default_tone', 'email_template_examples', 'logo_url', 'use_v2_pipeline']:
                     if field in body_data:
                         update_fields.append(f"{field} = %s")
                         values.append(body_data[field])
@@ -1634,9 +1635,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 cur.execute('''
                     SELECT eml.content_type_ids, eml.event_id, eml.ai_provider, eml.ai_model,
-                           e.program_doc_id, e.pain_doc_id, e.logo_url, e.name, e.default_tone, e.email_template_examples
-                    FROM event_mailing_lists eml
-                    JOIN events e ON eml.event_id = e.id
+                           e.program_doc_id, e.pain_doc_id, e.logo_url, e.name, e.default_tone, e.email_template_examples, e.use_v2_pipeline
+                    FROM t_p22819116_event_schedule_app.event_mailing_lists eml
+                    JOIN t_p22819116_event_schedule_app.events e ON eml.event_id = e.id
                     WHERE eml.id = %s
                 ''', (list_id,))
                 

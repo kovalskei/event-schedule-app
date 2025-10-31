@@ -26,6 +26,7 @@ interface Event {
   lists_count: number;
   campaigns_count: number;
   logo_url?: string;
+  use_v2_pipeline?: boolean;
 }
 
 interface MailingList {
