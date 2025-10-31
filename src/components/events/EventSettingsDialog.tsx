@@ -26,9 +26,6 @@ interface Event {
   email_template_examples: string;
   logo_url?: string;
   cta_base_url?: string;
-  ai_provider?: string;
-  ai_model?: string;
-  ai_assistant_id?: string;
 }
 
 interface ContentType {
@@ -613,36 +610,6 @@ export default function EventSettingsDialog({
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     UTM-метки будут добавлены автоматически при генерации писем
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Настройки AI</CardTitle>
-                <CardDescription>Модель для генерации писем (можно переопределить в настройках списка)</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="ai_model">AI Модель</Label>
-                  <Select
-                    value={event.ai_model || 'gpt-4o-mini'}
-                    onValueChange={(value) => setEvent({ ...event, ai_model: value })}
-                  >
-                    <SelectTrigger id="ai_model">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="gpt-4o-mini">GPT-4o Mini (быстрая)</SelectItem>
-                      <SelectItem value="gpt-4o">GPT-4o (умная)</SelectItem>
-                      <SelectItem value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet (OpenRouter)</SelectItem>
-                      <SelectItem value="anthropic/claude-3-opus">Claude 3 Opus (OpenRouter)</SelectItem>
-                      <SelectItem value="google/gemini-pro-1.5">Gemini Pro 1.5 (OpenRouter)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Модели через OpenRouter требуют ключа OPENROUTER_API_KEY
                   </p>
                 </div>
 
