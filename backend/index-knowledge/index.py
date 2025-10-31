@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Dict, Any, List
 import psycopg2
 import urllib.request
@@ -50,12 +51,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'DATABASE_URL not configured'})
             }
         
+        openai_key = os.environ.get('OPENAI_API_KEY', '')
         openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
-        if not openrouter_key:
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        
+        if not openai_key and not openrouter_key and not gemini_key:
             return {
                 'statusCode': 500,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
+                'body': json.dumps({'error': 'OPENAI_API_KEY, OPENROUTER_API_KEY or GEMINI_API_KEY required'})
             }
         
         conn = psycopg2.connect(db_url)
@@ -90,7 +94,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if program_text:
                 lines = program_text.strip().split('\n')
                 
-                max_items = 50
+                max_items = 20
                 processed = 0
                 
                 for line in lines:
@@ -103,7 +107,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                     
                     try:
-                        embedding = create_embedding(line, openrouter_key)
+                        embedding = create_embedding(line, openai_key, openrouter_key, gemini_key)
                         
                         cur.execute(
                             "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
@@ -122,7 +126,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if pain_text:
                 paragraphs = [p.strip() for p in pain_text.split('\n\n') if p.strip()]
                 
-                max_pain_items = 20
+                max_pain_items = 10
                 processed_pain = 0
                 
                 for para in paragraphs:
@@ -134,7 +138,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                     
                     try:
-                        embedding = create_embedding(para, openrouter_key)
+                        embedding = create_embedding(para, openai_key, openrouter_key, gemini_key)
                         
                         cur.execute(
                             "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
@@ -147,6 +151,43 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     except Exception as e:
                         print(f"[ERROR] Failed to index pain point: {str(e)}")
                         continue
+        
+        cur.execute(
+            "SELECT html_layout FROM t_p22819116_event_schedule_app.email_templates WHERE event_id = " + str(event_id) + " LIMIT 10"
+        )
+        
+        templates = cur.fetchall()
+        
+        if templates:
+            style_snippets = extract_style_snippets([t[0] for t in templates])
+            
+            max_snippets = 10
+            processed_snippets = 0
+            
+            for snippet in style_snippets:
+                if processed_snippets >= max_snippets:
+                    print(f"[INFO] Reached limit of {max_snippets} style snippets")
+                    break
+                
+                if len(snippet) < 20:
+                    continue
+                
+                try:
+                    embedding = create_embedding(snippet, openai_key, openrouter_key, gemini_key)
+                    
+                    cur.execute(
+                        "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
+                        str(event_id) + ", 'style_snippet', '" + snippet.replace("'", "''") + "', '{}', ARRAY[" + 
+                        ",".join(str(x) for x in embedding) + "])"
+                    )
+                    
+                    indexed_count += 1
+                    processed_snippets += 1
+                except Exception as e:
+                    print(f"[ERROR] Failed to index style snippet: {str(e)}")
+                    continue
+            
+            print(f"[INFO] Indexed {processed_snippets} style snippets from email templates")
         
         conn.commit()
         cur.close()
@@ -167,6 +208,42 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
         'body': json.dumps({'error': 'Method not allowed'})
     }
+
+def extract_style_snippets(html_templates: List[str]) -> List[str]:
+    """Извлекает характерные фразы и стилистические паттерны из HTML шаблонов"""
+    snippets = []
+    
+    for html in html_templates:
+        text = re.sub(r'<[^>]+>', ' ', html)
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        text = re.sub(r'\{\{[^}]+\}\}', '', text)
+        
+        sentences = re.split(r'[.!?]+', text)
+        
+        for sent in sentences:
+            sent = sent.strip()
+            
+            if len(sent) < 20 or len(sent) > 300:
+                continue
+            
+            if any(keyword in sent.lower() for keyword in [
+                'привет', 'здравствуй', 'добрый', 'уважаем', 'дорог',
+                'рад', 'приглаш', 'ждём', 'встреч', 'возможност',
+                'не упусти', 'успе', 'зарегистр', 'билет'
+            ]):
+                if sent not in snippets:
+                    snippets.append(sent)
+        
+        greeting_match = re.search(r'(Привет[^.!?]{10,150}[.!?])', text, re.IGNORECASE)
+        if greeting_match and greeting_match.group(1) not in snippets:
+            snippets.append(greeting_match.group(1))
+        
+        cta_match = re.search(r'(Зарегистр[^.!?]{10,150}[.!?])', text, re.IGNORECASE)
+        if cta_match and cta_match.group(1) not in snippets:
+            snippets.append(cta_match.group(1))
+    
+    return snippets[:15]
 
 def read_google_doc(url: str) -> str:
     """Читает Google Docs или Sheets"""
@@ -210,32 +287,100 @@ def read_google_doc(url: str) -> str:
         print(f'[ERROR] Failed to read Google doc: {str(e)}')
         return ''
 
-def create_embedding(text: str, api_key: str) -> List[float]:
-    """Создаёт эмбеддинг через OpenRouter API"""
-    data = {
-        'model': 'openai/text-embedding-3-small',
-        'input': text
-    }
+def create_embedding(text: str, openai_key: str, openrouter_key: str, gemini_key: str = '') -> List[float]:
+    """Создаёт эмбеддинг через Gemini (приоритет), OpenAI или OpenRouter"""
     
-    req = urllib.request.Request(
-        'https://openrouter.ai/api/v1/embeddings',
-        data=json.dumps(data).encode('utf-8'),
-        headers={
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}',
-            'HTTP-Referer': 'https://poehali.dev',
-            'X-Title': 'Event Schedule App'
+    if gemini_key:
+        url = f'https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key={gemini_key}'
+        data = {
+            'model': 'models/text-embedding-004',
+            'content': {
+                'parts': [{
+                    'text': text
+                }]
+            }
         }
-    )
+        
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(data).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                response_text = response.read().decode('utf-8')
+                result = json.loads(response_text)
+                
+                if 'error' in result:
+                    print(f"[WARNING] Gemini API error: {result['error']}, trying OpenAI")
+                    if not openai_key and not openrouter_key:
+                        raise Exception(f"Gemini API error: {result['error']}")
+                else:
+                    return result['embedding']['values']
+        except Exception as e:
+            print(f"[WARNING] Gemini request failed: {str(e)}, trying OpenAI")
+            if not openai_key and not openrouter_key:
+                raise
     
-    with urllib.request.urlopen(req) as response:
-        response_text = response.read().decode('utf-8')
-        result = json.loads(response_text)
+    if openai_key:
+        data = {
+            'model': 'text-embedding-3-small',
+            'input': text
+        }
         
-        if 'error' in result:
-            raise Exception(f"OpenRouter API error: {result['error']}")
+        req = urllib.request.Request(
+            'https://api.openai.com/v1/embeddings',
+            data=json.dumps(data).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {openai_key}'
+            }
+        )
         
-        if 'data' not in result or len(result['data']) == 0:
-            raise Exception(f"Invalid OpenRouter response: {response_text[:200]}")
+        try:
+            with urllib.request.urlopen(req) as response:
+                response_text = response.read().decode('utf-8')
+                result = json.loads(response_text)
+                
+                if 'error' in result:
+                    print(f"[WARNING] OpenAI API error: {result['error']}, falling back to OpenRouter")
+                    if not openrouter_key:
+                        raise Exception(f"OpenAI API error: {result['error']}")
+                else:
+                    return result['data'][0]['embedding']
+        except Exception as e:
+            print(f"[WARNING] OpenAI request failed: {str(e)}, falling back to OpenRouter")
+            if not openrouter_key:
+                raise
+    
+    if openrouter_key:
+        data = {
+            'model': 'text-embedding-3-small',
+            'input': text
+        }
         
-        return result['data'][0]['embedding']
+        req = urllib.request.Request(
+            'https://openrouter.ai/api/v1/embeddings',
+            data=json.dumps(data).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {openrouter_key}',
+                'HTTP-Referer': 'https://poehali.dev',
+                'X-Title': 'Event Schedule App'
+            }
+        )
+        
+        with urllib.request.urlopen(req) as response:
+            response_text = response.read().decode('utf-8')
+            result = json.loads(response_text)
+            
+            if 'error' in result:
+                raise Exception(f"OpenRouter API error: {result['error']}")
+            
+            if 'data' not in result or len(result['data']) == 0:
+                raise Exception(f"Invalid response: {response_text[:200]}")
+            
+            return result['data'][0]['embedding']
+    
+    raise Exception('No API key available for embeddings')
