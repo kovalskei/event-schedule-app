@@ -115,6 +115,8 @@ HTML:
             if json_start != -1 and json_end > json_start:
                 json_str = json_str[json_start:json_end]
             
+            json_str = json_str.replace('`', '"')
+            
             print(f"[DEBUG] Extracted JSON (first 500 chars): {json_str[:500]}")
             
             result = json.loads(json_str)
