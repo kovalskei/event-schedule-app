@@ -68,33 +68,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
             }
         
-        prompt = f"""Преврати HTML-письмо в шаблон с динамическими переменными для автоматизированной подстановки данных (спикеров, боли, CTA и т.д.), не ломая верстку.
+        prompt = f"""Преврати HTML-письмо в Mustache шаблон. Замени динамический контент на переменные.
 
-HTML для преобразования:
-{html_content[:6000]}
+HTML:
+{html_content}
 
-Структура шаблона - что нужно параметризовать:
+Переменные:
+{{{{intro_heading}}}} - заголовок
+{{{{intro_text}}}} - вступление  
+{{{{subheading}}}} - подзаголовок
+{{{{cta_text}}}} - текст кнопки
+{{{{cta_url}}}} - ссылка кнопки
+{{{{#speakers}}}}...{{{{/speakers}}}} - цикл по спикерам
 
-Блок | Переменная
---- | ---
-Заголовок в теле | {{{{intro_heading}}}}
-Вступительный абзац | {{{{intro_text}}}}
-Подзаголовок | {{{{subheading}}}}
-CTA-текст | {{{{cta_text}}}}
-CTA-ссылка | {{{{cta_url}}}}
-Спикеры (если есть) | {{{{#speakers}}}}...{{{{/speakers}}}} с {{{{name}}}}, {{{{title}}}}, {{{{photo_url}}}}
+Сохрани всю структуру HTML. НЕ трогай footer, логотипы, контакты.
 
-Правила:
-- Сохрани ВСЮ HTML-структуру: таблицы, inline-стили, атрибуты, footer, ссылки отписки
-- Замени ТОЛЬКО динамический контент (заголовки, текст, ссылки)
-- НЕ трогай статические элементы (логотипы компании, контакты в footer, copyright)
-- Длина результата должна быть близка к оригиналу
-
-Верни ТОЛЬКО валидный JSON:
+Верни JSON:
 {{{{
-  "html_layout": "полный HTML со слотами",
-  "slots_schema": {{"intro_heading": "string", "intro_text": "string", ...}},
-  "notes": "какие замены сделаны"
+  "html_layout": "HTML со слотами",
+  "slots_schema": {{"intro_heading": "string", ...}},
+  "notes": "описание"
 }}}}"""
         
         try:
@@ -189,7 +182,7 @@ CTA-ссылка | {{{{cta_url}}}}
         'body': json.dumps({'error': 'Method not allowed'})
     }
 
-def call_openrouter(prompt: str, api_key: str, model: str = 'anthropic/claude-3.5-sonnet') -> str:
+def call_openrouter(prompt: str, api_key: str, model: str = 'anthropic/claude-3.5-haiku') -> str:
     """Вызывает OpenRouter Chat API"""
     data = {
         'model': model,
@@ -208,6 +201,6 @@ def call_openrouter(prompt: str, api_key: str, model: str = 'anthropic/claude-3.
         }
     )
     
-    with urllib.request.urlopen(req, timeout=50) as response:
+    with urllib.request.urlopen(req, timeout=25) as response:
         result = json.loads(response.read().decode('utf-8'))
         return result['choices'][0]['message']['content']
