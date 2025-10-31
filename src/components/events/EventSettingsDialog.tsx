@@ -472,15 +472,24 @@ export default function EventSettingsDialog({
 
     setGeneratingTemplate(true);
     try {
+      const requestBody = { 
+        html_content: newTemplate.html_template,
+        event_id: eventId,
+        content_type_id: parseInt(newTemplate.content_type_id),
+        name: newTemplate.name + ' (со слотами)'
+      };
+      
+      console.log('[FRONTEND] Sending to template-generator:', {
+        html_length: requestBody.html_content?.length || 0,
+        html_preview: requestBody.html_content?.substring(0, 200) || 'EMPTY',
+        event_id: requestBody.event_id,
+        content_type_id: requestBody.content_type_id
+      });
+      
       const res = await fetch(TEMPLATE_GENERATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          html_content: newTemplate.html_template,
-          event_id: eventId,
-          content_type_id: parseInt(newTemplate.content_type_id),
-          name: newTemplate.name + ' (со слотами)'
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json();
