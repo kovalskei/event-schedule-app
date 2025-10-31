@@ -1,0 +1,27 @@
+{
+  "tests": [
+    {
+      "name": "Missing parameters",
+      "method": "POST",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "event_id and generated_html required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Valid validation request",
+      "method": "POST",
+      "body": {
+        "event_id": 1,
+        "generated_html": "<html><body><h1>Test Email</h1></body></html>"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import Icon from '@/components/ui/icon';
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 const IMAGE_UPLOADER_URL = 'https://functions.poehali.dev/61daaad5-eb92-4f21-8104-8760f8d0094e';
 const INDEX_KNOWLEDGE_URL = 'https://functions.poehali.dev/814ac16e-cb58-4603-b3af-4b6f9215fb05';
+const TEMPLATE_GENERATOR_URL = 'https://functions.poehali.dev/616d6890-24c3-49c8-8b29-692dd342933b';
 
 interface Event {
   id: number;
@@ -64,6 +65,7 @@ export default function EventSettingsDialog({
   const [loading, setLoading] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
   const [indexing, setIndexing] = useState(false);
+  const [generatingTemplate, setGeneratingTemplate] = useState(false);
   const [event, setEvent] = useState<Event | null>(null);
   const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
@@ -375,6 +377,41 @@ export default function EventSettingsDialog({
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateTemplate = async () => {
+    if (!newTemplate.html_template) {
+      sonnerToast.error('Вставьте HTML для преобразования');
+      return;
+    }
+
+    setGeneratingTemplate(true);
+    try {
+      const res = await fetch(TEMPLATE_GENERATOR_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html_content: newTemplate.html_template }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setNewTemplate({
+        ...newTemplate,
+        html_template: data.html_layout,
+      });
+
+      sonnerToast.success('Шаблон преобразован в формат со слотами', {
+        description: data.notes || `Создано слотов: ${data.recommended_slots?.length || 0}`,
+      });
+    } catch (error: any) {
+      sonnerToast.error(`Ошибка генерации: ${error.message}`);
+    } finally {
+      setGeneratingTemplate(false);
     }
   };
 
@@ -991,7 +1028,28 @@ export default function EventSettingsDialog({
                     </div>
 
                     <div>
-                      <Label htmlFor="template_html">HTML шаблон</Label>
+                      <div className="flex items-center justify-between mb-2">
+                        <Label htmlFor="template_html">HTML шаблон</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleGenerateTemplate}
+                          disabled={generatingTemplate || !newTemplate.html_template}
+                        >
+                          {generatingTemplate ? (
+                            <>
+                              <Icon name="Loader2" className="w-4 h-4 mr-2 animate-spin" />
+                              Генерация...
+                            </>
+                          ) : (
+                            <>
+                              <Icon name="Sparkles" className="w-4 h-4 mr-2" />
+                              Преобразовать в шаблон со слотами
+                            </>
+                          )}
+                        </Button>
+                      </div>
                       <Textarea
                         id="template_html"
                         value={newTemplate.html_template}
@@ -1000,6 +1058,9 @@ export default function EventSettingsDialog({
                         placeholder="<html>...</html>"
                         className="font-mono text-sm"
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        💡 Вставьте готовый HTML, затем нажмите "Преобразовать" для создания шаблона со слотами
+                      </p>
                     </div>
 
                     <div>

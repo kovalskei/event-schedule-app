@@ -202,6 +202,41 @@ CTA ссылка будет подставлена автоматически: {
             
             filled_html = fill_html_template(html_layout, slots_data)
             
+            validation_result = None
+            try:
+                conn2 = psycopg2.connect(db_url)
+                cur2 = conn2.cursor()
+                cur2.execute(
+                    "SELECT email_template_examples FROM t_p22819116_event_schedule_app.events WHERE id = " + str(event_id)
+                )
+                template_examples_row = cur2.fetchone()
+                cur2.close()
+                conn2.close()
+                
+                if template_examples_row and template_examples_row[0]:
+                    validation_prompt = f"""Проверь сгенерированное письмо на соответствие стилю примеров.
+
+ПРИМЕРЫ: {template_examples_row[0]}
+
+СГЕНЕРИРОВАНО: {filled_html}
+
+Оцени по 7 критериям (colors, typography, structure, spacing, cta_buttons, responsive, branding) от 0 до 10.
+Верни JSON: {{"overall_score": 8.5, "issues": [...], "suggestions": [...], "passed": true}}"""
+                    
+                    validation_response = call_openai(validation_prompt, openrouter_key)
+                    validation_json_str = validation_response.strip()
+                    if validation_json_str.startswith('```json'):
+                        validation_json_str = validation_json_str[7:]
+                    if validation_json_str.startswith('```'):
+                        validation_json_str = validation_json_str[3:]
+                    if validation_json_str.endswith('```'):
+                        validation_json_str = validation_json_str[:-3]
+                    validation_json_str = validation_json_str.strip()
+                    
+                    validation_result = json.loads(validation_json_str)
+            except:
+                pass
+            
             return {
                 'statusCode': 200,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
@@ -211,7 +246,8 @@ CTA ссылка будет подставлена автоматически: {
                     'html': filled_html,
                     'slots_data': slots_data,
                     'template_name': template_name,
-                    'rag_context_items': len(rag_results)
+                    'rag_context_items': len(rag_results),
+                    'validation': validation_result
                 })
             }
         except Exception as e:

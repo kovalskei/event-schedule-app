@@ -1,0 +1,26 @@
+{
+  "tests": [
+    {
+      "name": "Missing html_content",
+      "method": "POST",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "html_content required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Valid template generation",
+      "method": "POST",
+      "body": {
+        "html_content": "<html><body><h1>Hello World</h1><p>This is a test email.</p><a href='#'>Click here</a></body></html>"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
