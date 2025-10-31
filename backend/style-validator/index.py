@@ -30,14 +30,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             body_str = '{}'
         body_data = json.loads(body_str)
         
+        draft_id = body_data.get('draft_id')
         event_id = body_data.get('event_id')
+        content_type_id = body_data.get('content_type_id')
         generated_html = body_data.get('generated_html')
         
-        if not event_id or not generated_html:
+        if not draft_id and not (event_id and content_type_id and generated_html):
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'event_id and generated_html required'})
+                'body': json.dumps({'error': 'Either draft_id or (event_id + content_type_id + generated_html) required'})
             }
         
         db_url = os.environ.get('DATABASE_URL', '')
@@ -59,26 +61,46 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
         
+        if draft_id:
+            cur.execute(
+                "SELECT html_body, event_id, content_type_id FROM t_p22819116_event_schedule_app.generated_emails WHERE id = %s",
+                (draft_id,)
+            )
+            draft_row = cur.fetchone()
+            if not draft_row:
+                cur.close()
+                conn.close()
+                return {
+                    'statusCode': 404,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'error': 'Draft not found'})
+                }
+            
+            generated_html = draft_row[0]
+            event_id = draft_row[1]
+            content_type_id = draft_row[2]
+        
         cur.execute(
-            "SELECT email_template_examples FROM t_p22819116_event_schedule_app.events WHERE id = " + str(event_id)
+            "SELECT html_template FROM t_p22819116_event_schedule_app.email_templates " +
+            "WHERE event_id = %s AND content_type_id = %s AND is_example = true LIMIT 1",
+            (event_id, content_type_id)
         )
         
-        result = cur.fetchone()
+        example_row = cur.fetchone()
         
-        cur.close()
-        conn.close()
-        
-        if not result or not result[0]:
+        if not example_row:
+            cur.close()
+            conn.close()
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({
-                    'error': 'No template examples found for this event',
-                    'suggestion': 'Upload template examples in event settings to enable validation'
+                    'error': 'No example template found (is_example=true)',
+                    'suggestion': 'Create example template via template-generator first'
                 })
             }
         
-        template_examples = result[0]
+        template_examples = example_row[0]
         
         prompt = f"""Ты — эксперт по email-дизайну и HTML вёрстке.
 
@@ -146,6 +168,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             json_str = json_str.strip()
             
             validation_result = json.loads(json_str)
+            
+            if draft_id:
+                conn = psycopg2.connect(db_url)
+                cur = conn.cursor()
+                
+                validation_status = 'passed' if validation_result.get('passed') else 'failed'
+                validation_notes = json.dumps(validation_result, ensure_ascii=False)
+                
+                cur.execute(
+                    "UPDATE t_p22819116_event_schedule_app.generated_emails " +
+                    "SET validation_status = %s, validation_notes = %s WHERE id = %s",
+                    (validation_status, validation_notes, draft_id)
+                )
+                
+                conn.commit()
+                cur.close()
+                conn.close()
             
             return {
                 'statusCode': 200,
