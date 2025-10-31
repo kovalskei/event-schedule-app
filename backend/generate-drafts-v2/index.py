@@ -49,12 +49,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'DATABASE_URL not configured'})
             }
         
-        openai_key = os.environ.get('OPENAI_API_KEY', '')
-        if not openai_key:
+        openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
+        if not openrouter_key:
             return {
                 'statusCode': 500,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'OPENAI_API_KEY not configured'})
+                'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
             }
         
         conn = psycopg2.connect(db_url)
@@ -93,7 +93,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         template_name, instructions, html_layout, slots_schema = template_row
         
         query_text = instructions if instructions else template_name
-        query_embedding = create_embedding(query_text, openai_key)
+        query_embedding = create_embedding(query_text, openrouter_key)
         
         cur.execute(
             "SELECT content, item_type, metadata FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + 
@@ -134,7 +134,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 HTML должен быть адаптивным, с CTA-кнопкой и структурой как у профессиональных email-рассылок.
 """
         
-        generated = call_openai(prompt, openai_key)
+        generated = call_openrouter(prompt, openrouter_key)
         
         cur.close()
         conn.close()
@@ -172,18 +172,20 @@ HTML должен быть адаптивным, с CTA-кнопкой и стр
     }
 
 def create_embedding(text: str, api_key: str) -> List[float]:
-    """Создаёт эмбеддинг через OpenAI API"""
+    """Создаёт эмбеддинг через OpenRouter API"""
     data = {
-        'input': text,
-        'model': 'text-embedding-3-small'
+        'model': 'openai/text-embedding-3-small',
+        'input': text
     }
     
     req = urllib.request.Request(
-        'https://api.openai.com/v1/embeddings',
+        'https://openrouter.ai/api/v1/embeddings',
         data=json.dumps(data).encode('utf-8'),
         headers={
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}'
+            'Authorization': f'Bearer {api_key}',
+            'HTTP-Referer': 'https://poehali.dev',
+            'X-Title': 'Event Schedule App'
         }
     )
     
@@ -191,20 +193,22 @@ def create_embedding(text: str, api_key: str) -> List[float]:
         result = json.loads(response.read().decode('utf-8'))
         return result['data'][0]['embedding']
 
-def call_openai(prompt: str, api_key: str) -> str:
-    """Вызывает OpenAI Chat API"""
+def call_openrouter(prompt: str, api_key: str) -> str:
+    """Вызывает OpenRouter Chat API"""
     data = {
-        'model': 'gpt-4o-mini',
+        'model': 'openai/gpt-4o-mini',
         'messages': [{'role': 'user', 'content': prompt}],
         'temperature': 0.7
     }
     
     req = urllib.request.Request(
-        'https://api.openai.com/v1/chat/completions',
+        'https://openrouter.ai/api/v1/chat/completions',
         data=json.dumps(data).encode('utf-8'),
         headers={
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}'
+            'Authorization': f'Bearer {api_key}',
+            'HTTP-Referer': 'https://poehali.dev',
+            'X-Title': 'Event Schedule App'
         }
     )
     

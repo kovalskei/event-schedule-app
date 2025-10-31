@@ -50,12 +50,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'DATABASE_URL not configured'})
             }
         
-        openai_key = os.environ.get('OPENAI_API_KEY', '')
-        if not openai_key:
+        openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
+        if not openrouter_key:
             return {
                 'statusCode': 500,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'OPENAI_API_KEY not configured'})
+                'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
             }
         
         conn = psycopg2.connect(db_url)
@@ -95,7 +95,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                     
                     try:
-                        embedding = create_embedding(line, openai_key)
+                        embedding = create_embedding(line, openrouter_key)
                         
                         cur.execute(
                             "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
@@ -118,7 +118,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                     
                     try:
-                        embedding = create_embedding(para, openai_key)
+                        embedding = create_embedding(para, openrouter_key)
                         
                         cur.execute(
                             "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
@@ -194,18 +194,20 @@ def read_google_doc(url: str) -> str:
         return ''
 
 def create_embedding(text: str, api_key: str) -> List[float]:
-    """Создаёт эмбеддинг через OpenAI API"""
+    """Создаёт эмбеддинг через OpenRouter API"""
     data = {
-        'input': text,
-        'model': 'text-embedding-3-small'
+        'model': 'openai/text-embedding-3-small',
+        'input': text
     }
     
     req = urllib.request.Request(
-        'https://api.openai.com/v1/embeddings',
+        'https://openrouter.ai/api/v1/embeddings',
         data=json.dumps(data).encode('utf-8'),
         headers={
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}'
+            'Authorization': f'Bearer {api_key}',
+            'HTTP-Referer': 'https://poehali.dev',
+            'X-Title': 'Event Schedule App'
         }
     )
     
