@@ -124,7 +124,7 @@ HTML:
                 "INSERT INTO t_p22819116_event_schedule_app.email_templates " +
                 "(event_id, content_type_id, name, html_template, html_layout, slots_schema, instructions) VALUES " +
                 "(%s, %s, %s, %s, %s, %s, %s) RETURNING id",
-                (event_id, content_type_id, template_name, '', html_layout, json.dumps(slots_schema), 'Автоматически сгенерирован из HTML примера')
+                (event_id, content_type_id, template_name, html_layout, html_layout, json.dumps(slots_schema), 'Автоматически сгенерирован из HTML примера')
             )
             
             new_template_id = cur.fetchone()[0]
