@@ -1,0 +1,27 @@
+{
+  "tests": [
+    {
+      "name": "Missing event_id",
+      "method": "POST",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "event_id required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Valid event indexing",
+      "method": "POST",
+      "body": {
+        "event_id": 1
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "event_id": 1
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

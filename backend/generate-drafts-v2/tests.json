@@ -1,0 +1,27 @@
+{
+  "tests": [
+    {
+      "name": "Missing parameters",
+      "method": "POST",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "event_id and content_type_id required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Valid generation request",
+      "method": "POST",
+      "body": {
+        "event_id": 1,
+        "content_type_id": 1
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

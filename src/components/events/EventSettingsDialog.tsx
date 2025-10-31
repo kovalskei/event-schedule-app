@@ -13,6 +13,7 @@ import Icon from '@/components/ui/icon';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 const IMAGE_UPLOADER_URL = 'https://functions.poehali.dev/61daaad5-eb92-4f21-8104-8760f8d0094e';
+const INDEX_KNOWLEDGE_URL = 'https://functions.poehali.dev/814ac16e-cb58-4603-b3af-4b6f9215fb05';
 
 interface Event {
   id: number;
@@ -62,6 +63,7 @@ export default function EventSettingsDialog({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [indexing, setIndexing] = useState(false);
   const [event, setEvent] = useState<Event | null>(null);
   const [contentTypes, setContentTypes] = useState<ContentType[]>([]);
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([]);
@@ -376,6 +378,31 @@ export default function EventSettingsDialog({
     }
   };
 
+  const handleIndexKnowledge = async () => {
+    if (!eventId) return;
+    
+    setIndexing(true);
+    try {
+      const res = await fetch(INDEX_KNOWLEDGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: eventId }),
+      });
+      
+      const data = await res.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      sonnerToast.success(`Проиндексировано ${data.indexed_count} элементов знаний`);
+    } catch (error: any) {
+      sonnerToast.error(`Ошибка индексации: ${error.message}`);
+    } finally {
+      setIndexing(false);
+    }
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !event) return;
@@ -652,10 +679,23 @@ export default function EventSettingsDialog({
                       <div>✅ Строгие HTML-шаблоны (табличная вёрстка)</div>
                       <div>✅ QA-валидация (subject, alt, links, размер)</div>
                       <div>✅ A/B варианты subject из одного запроса</div>
-                      <div className="mt-2 pt-2 border-t text-yellow-700">
-                        ⚠️ Требуется: индексация knowledge_store и создание шаблонов
-                      </div>
                     </div>
+
+                    <Button 
+                      onClick={handleIndexKnowledge} 
+                      disabled={indexing || !event?.use_v2_pipeline}
+                      className="w-full"
+                      variant="outline"
+                    >
+                      <Icon name={indexing ? "Loader2" : "Database"} className={`w-4 h-4 mr-2 ${indexing ? 'animate-spin' : ''}`} />
+                      {indexing ? 'Индексация...' : 'Индексировать знания'}
+                    </Button>
+                    
+                    {!event?.use_v2_pipeline && (
+                      <div className="text-xs text-yellow-700 bg-yellow-50 p-2 rounded">
+                        ℹ️ Включите V2 Pipeline, чтобы запустить индексацию
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
