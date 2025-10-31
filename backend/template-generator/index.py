@@ -65,18 +65,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
             }
         
-        prompt = f"""Преобразуй HTML в Mustache шаблон. Верни ТОЛЬКО валидный JSON без текста.
+        prompt = f"""КРИТИЧЕСКИ ВАЖНО: Сохрани ВСЮ структуру HTML, все стили, таблицы, изображения. Только замени текстовые значения на слоты Mustache.
 
-HTML:
-{html_content[:2000]}
+HTML для преобразования:
+{html_content[:4000]}
 
-Замени динамический контент на {{{{слоты}}}}: headline, intro_text, #speakers (name, title, pitch), cta_text, cta_url
+ПРАВИЛА:
+1. СОХРАНИ всю HTML разметку, таблицы, стили, атрибуты - НЕ упрощай!
+2. Замени только текстовое содержимое на Mustache слоты: {{{{headline}}}}, {{{{intro_text}}}}, {{{{#speakers}}}}...{{{{/speakers}}}}
+3. Для повторяющихся элементов (спикеры) используй {{{{#speakers}}}}...{{{{/speakers}}}}
+4. Внутри списков используй {{{{name}}}}, {{{{title}}}}, {{{{pitch}}}}, {{{{photo_url}}}}
+5. Замени ссылки и тексты кнопок на {{{{cta_text}}}}, {{{{cta_url}}}}
+6. НЕ меняй структуру таблиц, inline-стили, HTML теги
 
-Формат ответа (ТОЛЬКО JSON):
+Верни ТОЛЬКО валидный JSON в таком формате:
 {{{{
-  "html_layout": "HTML с {{{{слотами}}}}",
+  "html_layout": "ПОЛНЫЙ HTML со слотами Mustache (сохрани все стили и структуру!)",
   "slots_schema": {{"headline": "string", "intro_text": "string", "speakers": [{{"name": "string", "title": "string", "pitch": "string", "photo_url": "string"}}], "cta_text": "string", "cta_url": "string", "subject": "string"}},
-  "notes": "Кратко"
+  "notes": "Что заменил на слоты"
 }}}}"""
         
         try:
