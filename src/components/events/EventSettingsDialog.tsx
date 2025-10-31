@@ -386,12 +386,22 @@ export default function EventSettingsDialog({
       return;
     }
 
+    if (!newTemplate.content_type_id || !newTemplate.name) {
+      sonnerToast.error('Укажите тип контента и название шаблона');
+      return;
+    }
+
     setGeneratingTemplate(true);
     try {
       const res = await fetch(TEMPLATE_GENERATOR_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html_content: newTemplate.html_template }),
+        body: JSON.stringify({ 
+          html_content: newTemplate.html_template,
+          event_id: eventId,
+          content_type_id: parseInt(newTemplate.content_type_id),
+          name: newTemplate.name + ' (со слотами)'
+        }),
       });
 
       const data = await res.json();
@@ -400,14 +410,19 @@ export default function EventSettingsDialog({
         throw new Error(data.error);
       }
 
-      setNewTemplate({
-        ...newTemplate,
-        html_template: data.html_layout,
+      sonnerToast.success('Новый шаблон создан!', {
+        description: `Оригинал сохранён как пример для валидации. ${data.notes || ''}`,
       });
 
-      sonnerToast.success('Шаблон преобразован в формат со слотами', {
-        description: data.notes || `Создано слотов: ${data.recommended_slots?.length || 0}`,
+      setNewTemplate({
+        content_type_id: '',
+        name: '',
+        html_template: '',
+        subject_template: '',
+        instructions: '',
       });
+
+      loadEventSettings();
     } catch (error: any) {
       sonnerToast.error(`Ошибка генерации: ${error.message}`);
     } finally {
@@ -1058,9 +1073,16 @@ export default function EventSettingsDialog({
                         placeholder="<html>...</html>"
                         className="font-mono text-sm"
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        💡 Вставьте готовый HTML, затем нажмите "Преобразовать" для создания шаблона со слотами
-                      </p>
+                      <div className="text-xs text-gray-500 mt-2 p-3 bg-blue-50 rounded border border-blue-200">
+                        <div className="font-semibold mb-1">💡 Как использовать генератор:</div>
+                        <ol className="list-decimal ml-4 space-y-1">
+                          <li>Укажите тип контента и название шаблона</li>
+                          <li>Вставьте готовый HTML письма с примером дизайна</li>
+                          <li>Нажмите "Преобразовать в шаблон со слотами"</li>
+                          <li>Оригинал сохранится как эталон для валидации</li>
+                          <li>Будет создан новый шаблон с Mustache слотами</li>
+                        </ol>
+                      </div>
                     </div>
 
                     <div>

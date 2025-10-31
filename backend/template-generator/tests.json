@@ -14,11 +14,15 @@
       "name": "Valid template generation",
       "method": "POST",
       "body": {
-        "html_content": "<html><body><h1>Hello World</h1><p>This is a test email.</p><a href='#'>Click here</a></body></html>"
+        "html_content": "<html><body><h1>Hello World</h1><p>This is a test email.</p><a href='#'>Click here</a></body></html>",
+        "event_id": 1,
+        "content_type_id": 1,
+        "name": "Test Template"
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "success": true
+        "success": true,
+        "original_saved": true
       },
       "bodyMatcher": "partial"
     }

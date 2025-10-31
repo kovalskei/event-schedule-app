@@ -2,12 +2,13 @@ import json
 import os
 from typing import Dict, Any
 import urllib.request
+import psycopg2
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Преобразует обычный HTML в шаблон со слотами для V2 pipeline
-    Args: event - dict с httpMethod, body {html_content: str}
-    Returns: HTTP response с html_layout (Mustache шаблон) и slots_schema (JSON схема)
+    Business: Преобразует HTML в шаблон со слотами И создаёт новый шаблон в БД + сохраняет оригинал как пример
+    Args: event - dict с httpMethod, body {html_content: str, event_id: int, content_type_id: int, name: str}
+    Returns: HTTP response с созданным template_id
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -30,12 +31,30 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         body_data = json.loads(body_str)
         
         html_content = body_data.get('html_content')
+        event_id = body_data.get('event_id')
+        content_type_id = body_data.get('content_type_id')
+        template_name = body_data.get('name', 'Сгенерированный шаблон')
         
         if not html_content:
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({'error': 'html_content required'})
+            }
+        
+        if not event_id or not content_type_id:
+            return {
+                'statusCode': 400,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'event_id and content_type_id required'})
+            }
+        
+        db_url = os.environ.get('DATABASE_URL', '')
+        if not db_url:
+            return {
+                'statusCode': 500,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'DATABASE_URL not configured'})
             }
         
         openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
@@ -118,15 +137,51 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             result = json.loads(json_str)
             
+            html_layout = result.get('html_layout', '')
+            slots_schema = result.get('slots_schema', {})
+            
+            conn = psycopg2.connect(db_url)
+            cur = conn.cursor()
+            
+            cur.execute(
+                "SELECT email_template_examples FROM t_p22819116_event_schedule_app.events WHERE id = " + str(event_id)
+            )
+            examples_row = cur.fetchone()
+            
+            existing_examples = examples_row[0] if examples_row and examples_row[0] else ''
+            updated_examples = existing_examples + '\n\n--- НОВЫЙ ПРИМЕР ---\n' + html_content if existing_examples else html_content
+            
+            cur.execute(
+                "UPDATE t_p22819116_event_schedule_app.events SET email_template_examples = '" + 
+                updated_examples.replace("'", "''") + "' WHERE id = " + str(event_id)
+            )
+            
+            cur.execute(
+                "INSERT INTO t_p22819116_event_schedule_app.email_templates " +
+                "(event_id, content_type_id, name, html_template, html_layout, slots_schema, instructions) VALUES (" +
+                str(event_id) + ", " + str(content_type_id) + ", '" + template_name.replace("'", "''") + 
+                "', '', '" + html_layout.replace("'", "''") + "', '" + 
+                json.dumps(slots_schema, ensure_ascii=False).replace("'", "''") + 
+                "', 'Автоматически сгенерирован из HTML примера') RETURNING id"
+            )
+            
+            new_template_id = cur.fetchone()[0]
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
             return {
                 'statusCode': 200,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                 'body': json.dumps({
                     'success': True,
-                    'html_layout': result.get('html_layout', ''),
-                    'slots_schema': result.get('slots_schema', {}),
+                    'template_id': new_template_id,
+                    'html_layout': html_layout,
+                    'slots_schema': slots_schema,
                     'recommended_slots': result.get('recommended_slots', []),
-                    'notes': result.get('notes', '')
+                    'notes': result.get('notes', ''),
+                    'original_saved': True
                 })
             }
         except Exception as e:
