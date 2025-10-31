@@ -95,6 +95,10 @@ CTA-ссылка | {{{{cta_url}}}}
 }}}}"""
         
         try:
+            print(f"[DEBUG] ===== FULL PROMPT SENT TO AI =====")
+            print(prompt)
+            print(f"[DEBUG] ===== END OF PROMPT =====")
+            
             generated = call_openrouter(prompt, openrouter_key)
             
             print(f"[DEBUG] AI Raw Response (first 500 chars): {generated[:500]}")
