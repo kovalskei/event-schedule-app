@@ -1,12 +1,16 @@
 import json
 import os
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, List
 import psycopg2
+import requests
+from html.parser import HTMLParser
+from difflib import SequenceMatcher
+import base64
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Преобразует HTML в Mustache шаблон по жёстким правилам (БЕЗ ИИ)
+    Business: Преобразует HTML в Mustache шаблон через Claude 3.5 Sonnet
     Args: event - dict с httpMethod, body {html_content: str, event_id: int, content_type_id: int, name: str}
     Returns: HTTP response с созданными template_id (оригинал + шаблон)
     '''
@@ -31,9 +35,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         body_data = json.loads(body_str)
         
         html_content = body_data.get('html_content')
+        screenshot_base64 = body_data.get('screenshot')  # NEW: скриншот блока
         event_id = body_data.get('event_id')
         content_type_id = body_data.get('content_type_id')
         template_name = body_data.get('name', 'Шаблон')
+        test_mode = body_data.get('test_mode', False)
+        use_ai = body_data.get('use_ai', False)  # Legacy AI (полная генерация)
+        hybrid_ai = body_data.get('hybrid_ai', False)  # Гибрид: AI анализ + regex замена
+        vision_ai = body_data.get('vision_ai', False)  # NEW: Vision AI режим
         
         print(f"[INFO] Processing HTML: {len(html_content) if html_content else 0} chars")
         
@@ -44,7 +53,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'html_content required'})
             }
         
-        if not event_id or not content_type_id:
+        if not test_mode and (not event_id or not content_type_id):
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
@@ -60,7 +69,68 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         try:
-            html_with_slots = convert_to_template(html_content)
+            if vision_ai:
+                # Vision AI-режим: анализ скриншота + HTML
+                openai_key = os.environ.get('OPENAI_API_KEY', '')
+                if not openai_key:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENAI_API_KEY not configured for vision mode'})
+                    }
+                if not screenshot_base64:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'screenshot required for vision_ai mode'})
+                    }
+                print("[INFO] Using vision AI mode: analyzing screenshot + HTML")
+                instructions = analyze_with_vision(html_content, screenshot_base64, openai_key)
+                print(f"[INFO] Vision AI found {len(instructions.get('loops', []))} loops, {len(instructions.get('variables', []))} variables")
+                html_with_slots, result_data = apply_ai_instructions(html_content, instructions)
+            elif hybrid_ai:
+                # Гибридный AI-режим: AI только анализирует, regex применяет
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
+                if not openrouter_key:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured for hybrid mode'})
+                    }
+                print("[INFO] Using hybrid AI mode: AI analyzes + regex applies")
+                instructions = analyze_template_with_ai(html_content, openrouter_key)
+                print(f"[INFO] AI found {len(instructions.get('loops', []))} loops, {len(instructions.get('variables', []))} variables")
+                html_with_slots, result_data = apply_ai_instructions(html_content, instructions)
+            elif use_ai:
+                # Legacy AI-режим: полная генерация (медленно, дорого)
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
+                if not openrouter_key:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
+                    }
+                print("[INFO] Using legacy AI mode (full generation)")
+                html_with_slots = convert_to_template_ai(html_content, openrouter_key)
+                result_data = {"variables": {}, "slots_schema": {}}
+            else:
+                # Pure regex-режим: мгновенно, сохраняет все стили
+                print("[INFO] Using pure regex mode")
+                html_with_slots, result_data = convert_to_template_regex(html_content)
+                print(f"[INFO] Regex conversion: found {len(result_data.get('variables', {}))} variables")
+                print(f"[INFO] Regex conversion: found {len(result_data.get('slots_schema', {}))} schema fields")
+            
+            if test_mode:
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({
+                        'template': html_with_slots,
+                        'variables': result_data.get('variables', {}),
+                        'slots_schema': result_data.get('slots_schema', {}),
+                        'method': 'ai' if use_ai else 'regex'
+                    })
+                }
             
             conn = psycopg2.connect(db_url)
             cur = conn.cursor()
@@ -119,90 +189,553 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'body': json.dumps({'error': 'Method not allowed'})
     }
 
-def convert_to_template(html: str) -> str:
+def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
     """
-    Преобразует HTML в Mustache шаблон - ищет ЛЮБЫЕ текстовые блоки
+    Находит повторяющиеся блоки HTML (например, карточки спикеров)
+    Возвращает: [(шаблон_блока, [экземпляр1, экземпляр2, ...])]
+    """
+    # Ищем повторяющиеся блоки с минимальной вложенностью
+    # Не используем .*? для div — слишком жадный
+    patterns = [
+        r'(<tr[^>]*>(?:(?!</tr>).)*</tr>)',  # table rows
+        r'(<li[^>]*>(?:(?!</li>).)*</li>)',  # list items
+    ]
     
-    Правила:
-    1. Все <h1>, <h2>, <h3> → {{intro_heading}}, {{subheading}}
-    2. Все <p> с текстом >20 символов → {{intro_text}}, {{description}}
-    3. Все <a> с href → {{cta_url}}, текст → {{cta_text}}
-    4. Все <td> с текстом → {{speaker_name}}, {{speaker_title}}
-    5. Все <img> → src={{photo_url}}, alt={{name}}
+    repeating = []
+    
+    # ПРИОРИТЕТ: Ищем div с числами/процентами (статистика)
+    div_pattern_with_numbers = r'<div[^>]*>[^<]*?(\d+%|\d+\.\d+x)[^<]*?</div>'
+    number_divs = re.findall(r'(<div[^>]*>[^<]*?(?:\d+%|\d+\.\d+x)[^<]*?</div>)', html, re.DOTALL)
+    
+    print(f"[DEBUG] Found {len(number_divs)} divs with numbers/percentages")
+    
+    if len(number_divs) >= 3:
+        # Группируем блоки со статистикой
+        number_groups = []
+        for div_html in number_divs:
+            # Нормализуем числа для сравнения структуры
+            normalized = re.sub(r'\d+%', 'NUM%', div_html)
+            normalized = re.sub(r'\d+\.\d+x', 'NUMx', normalized)
+            normalized = re.sub(r'>\s*[^<]*\s*<', '><', normalized)
+            
+            matched = False
+            for group in number_groups:
+                group_norm = re.sub(r'\d+%', 'NUM%', group[0])
+                group_norm = re.sub(r'\d+\.\d+x', 'NUMx', group_norm)
+                group_norm = re.sub(r'>\s*[^<]*\s*<', '><', group_norm)
+                
+                similarity = SequenceMatcher(None, normalized, group_norm).ratio()
+                if similarity > 0.7:
+                    group.append(div_html)
+                    matched = True
+                    break
+            
+            if not matched:
+                number_groups.append([div_html])
+        
+        # Приоритет: статистика с 3+ элементами
+        for group in number_groups:
+            if len(group) >= 3:
+                print(f"[DEBUG] Found PRIORITY stats group with {len(group)} items")
+                repeating.append((group[0], group))
+                return repeating  # Возвращаем сразу!
+    
+    # Fallback: Ищем обычные div
+    div_pattern = r'<div([^>]*)>((?:(?!<div[^>]*>|</div>).)*)</div>'
+    all_divs = list(re.finditer(div_pattern, html, re.DOTALL))
+    
+    if len(all_divs) >= 2:
+        groups = []
+        for match in all_divs:
+            div_html = match.group(0)
+            structure = re.sub(r'>([^<]+)<', '><', div_html)
+            
+            matched = False
+            for group in groups:
+                group_structure = re.sub(r'>([^<]+)<', '><', group[0])
+                similarity = SequenceMatcher(None, structure, group_structure).ratio()
+                if similarity > 0.85:
+                    group.append(div_html)
+                    matched = True
+                    break
+            
+            if not matched:
+                groups.append([div_html])
+        
+        for group in groups:
+            if len(group) >= 3:
+                repeating.append((group[0], group))
+    
+    # Ищем другие паттерны
+    for pattern in patterns:
+        blocks = re.findall(pattern, html, re.DOTALL)
+        if len(blocks) < 2:
+            continue
+        
+        groups = []
+        for block in blocks:
+            structure = re.sub(r'>([^<]+)<', '><', block)
+            
+            matched = False
+            for group in groups:
+                group_structure = re.sub(r'>([^<]+)<', '><', group[0])
+                similarity = SequenceMatcher(None, structure, group_structure).ratio()
+                if similarity > 0.7:
+                    group.append(block)
+                    matched = True
+                    break
+            
+            if not matched:
+                groups.append([block])
+        
+        for group in groups:
+            if len(group) >= 2:
+                repeating.append((group[0], group))
+    
+    return repeating
+
+def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
+    """
+    Быстрая замена через regex (без AI) — работает за миллисекунды
+    Возвращает: (преобразованный HTML, словарь с переменными и slots_schema)
+    """
+    variables = {}
+    slots_schema = {}
+    counter = {'text': 0, 'url': 0, 'img': 0, 'loop': 0}
+    
+    # Шаг 1: Найти повторяющиеся блоки
+    repeating_blocks = find_repeating_blocks(html)
+    
+    # Шаг 2: Заменить повторяющиеся блоки на циклы
+    result = html
+    for template_block, instances in repeating_blocks:
+        if len(instances) < 2:
+            continue
+        
+        counter['loop'] += 1
+        loop_name = f"items_{counter['loop']}"
+        
+        # Извлекаем переменные из первого экземпляра
+        item_template = template_block
+        item_vars = {}
+        item_counter = 1
+        
+        # Заменяем текст на переменные
+        def replace_item_text(match):
+            nonlocal item_counter
+            text = match.group(1).strip()
+            if not text or len(text) < 3:
+                return match.group(0)
+            var_name = f"field_{item_counter}"
+            item_vars[var_name] = text
+            item_counter += 1
+            return f'>{{{{ {var_name} }}}}<'
+        
+        item_template = re.sub(r'>([^<>{}&]+)<', replace_item_text, item_template)
+        
+        # Создаём Mustache цикл
+        loop_html = f'{{{{#{loop_name}}}}}\n{item_template}\n{{{{/{loop_name}}}}}'
+        
+        # Находим первое вхождение ДО замены
+        first_occurrence = instances[0]
+        if first_occurrence not in result:
+            continue
+        
+        # Заменяем первое вхождение на цикл
+        result = result.replace(first_occurrence, loop_html, 1)
+        
+        # Удаляем остальные экземпляры
+        for instance in instances[1:]:
+            result = result.replace(instance, '', 1)
+        
+        # Добавляем schema для цикла
+        slots_schema[loop_name] = {
+            "type": "array",
+            "description": f"Массив элементов (найдено {len(instances)} шт)",
+            "items": {k: "string" for k in item_vars.keys()}
+        }
+        
+        # Добавляем примеры данных
+        variables[loop_name] = [item_vars]
+    
+    # Шаг 3: Заменяем оставшиеся одиночные переменные
+    def replace_text(match):
+        text = match.group(1).strip()
+        if not text or len(text) < 3 or text in ['&nbsp;', '​']:
+            return match.group(0)
+        
+        counter['text'] += 1
+        var_name = f"text_{counter['text']}"
+        variables[var_name] = text
+        slots_schema[var_name] = {"type": "string", "description": "Текстовое поле"}
+        return f'>{{{{ {var_name} }}}}<'
+    
+    def replace_url(match):
+        url = match.group(2).strip()
+        if not url or url.startswith('{{') or url == '#':
+            return match.group(0)
+        
+        counter['url'] += 1
+        var_name = f"url_{counter['url']}"
+        variables[var_name] = url
+        slots_schema[var_name] = {"type": "string", "description": "URL ссылки"}
+        return f'{match.group(1)}{{{{ {var_name} }}}}{match.group(3)}'
+    
+    def replace_img(match):
+        src = match.group(2).strip()
+        if not src or src.startswith('{{'):
+            return match.group(0)
+        
+        counter['img'] += 1
+        var_name = f"image_{counter['img']}"
+        variables[var_name] = src
+        slots_schema[var_name] = {"type": "string", "description": "URL изображения"}
+        return f'{match.group(1)}{{{{ {var_name} }}}}{match.group(3)}'
+    
+    # Заменяем <img src="...">
+    result = re.sub(r'(<img[^>]+src=["\'])([^"\']+)(["\'][^>]*>)', replace_img, result)
+    
+    # Заменяем <a href="...">
+    result = re.sub(r'(<a[^>]+href=["\'])([^"\']+)(["\'][^>]*>)', replace_url, result)
+    
+    # Заменяем текст внутри тегов
+    result = re.sub(r'>([^<>{}&]+)<', replace_text, result)
+    
+    return result, {"variables": variables, "slots_schema": slots_schema}
+
+def apply_ai_instructions(html: str, instructions: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """
+    Применяет AI-инструкции через regex (без генерации кода AI)
+    
+    Args:
+        html: исходный HTML
+        instructions: JSON от analyze_template_with_ai
+    
+    Returns:
+        (преобразованный HTML, переменные с схемой)
     """
     result = html
-    replacements = []
+    variables = {}
+    slots_schema = {}
     
-    # 1. Заменяем ВСЕ заголовки на слоты
-    h1_count = 0
-    def replace_h1(match):
-        nonlocal h1_count
-        h1_count += 1
-        tag = match.group(1)
-        content = match.group(2)
-        if h1_count == 1:
-            return f'<{tag}>{{{{intro_heading}}}}</{tag}>'
-        else:
-            return f'<{tag}>{{{{subheading_{h1_count}}}}}</{tag}>'
+    print(f"[DEBUG] Applying {len(instructions.get('loops', []))} loops, {len(instructions.get('variables', []))} variables")
     
-    result = re.sub(r'<(h[1-3][^>]*)>(.*?)</\1>', replace_h1, result, flags=re.DOTALL | re.IGNORECASE)
-    replacements.append(f"Заголовки: {h1_count} → слоты")
+    # Шаг 1: Применяем циклы
+    for loop in instructions.get('loops', []):
+        start = loop.get('start_marker', '')
+        end = loop.get('end_marker', '')
+        var_name = loop.get('variable_name', 'items')
+        fields = loop.get('fields', [])
+        
+        print(f"[DEBUG] Loop '{var_name}': looking for '{start[:30]}...'{end[:30]}'")
+        
+        # Ищем блок между маркерами
+        pattern = re.escape(start) + r'(.*?)' + re.escape(end)
+        match = re.search(pattern, result, re.DOTALL)
+        
+        if not match:
+            print(f"[WARN] Loop '{var_name}': markers not found in HTML")
+            continue
+        
+        print(f"[DEBUG] Loop '{var_name}': found block {len(match.group(1))} chars")
+        
+        block = match.group(1)
+        
+        # Заменяем поля в блоке на переменные
+        item_template = block
+        item_vars = {}
+        
+        for field in fields:
+            field_name = field.get('name', 'field')
+            example = field.get('example', '')
+            
+            if example:
+                # Заменяем конкретный пример на переменную
+                item_template = item_template.replace(example, f'{{{{ {field_name} }}}}')
+                item_vars[field_name] = example
+        
+        # Создаем цикл
+        loop_html = f'{{{{#{var_name}}}}}{item_template}{{{{/{var_name}}}}}'
+        
+        # Заменяем блок на цикл
+        result = result.replace(start + block + end, start + loop_html + end, 1)
+        
+        # Добавляем схему
+        slots_schema[var_name] = {
+            "type": "array",
+            "description": f"Массив {var_name}",
+            "items": {f['name']: "string" for f in fields}
+        }
+        variables[var_name] = [item_vars]
     
-    # 2. Заменяем ВСЕ параграфы с длинным текстом
-    p_count = 0
-    def replace_p(match):
-        nonlocal p_count
-        content = match.group(2).strip()
-        if len(content) > 20 and not '{{' in content:
-            p_count += 1
-            attrs = match.group(1)
-            if p_count == 1:
-                return f'<p{attrs}>{{{{intro_text}}}}</p>'
-            else:
-                return f'<p{attrs}>{{{{description_{p_count}}}}}</p>'
-        return match.group(0)
+    # Шаг 2: Заменяем одиночные переменные
+    for var in instructions.get('variables', []):
+        unique_text = var.get('unique_text', '')
+        var_name = var.get('variable_name', 'var')
+        var_type = var.get('type', 'text')
+        
+        if unique_text and unique_text in result:
+            result = result.replace(unique_text, f'{{{{ {var_name} }}}}')
+            variables[var_name] = unique_text
+            slots_schema[var_name] = {
+                "type": "string",
+                "description": f"{var_type.capitalize()} поле"
+            }
     
-    result = re.sub(r'<p([^>]*)>(.*?)</p>', replace_p, result, flags=re.DOTALL | re.IGNORECASE)
-    replacements.append(f"Параграфы: {p_count} → слоты")
+    return result, {"variables": variables, "slots_schema": slots_schema}
+
+def analyze_with_vision(html: str, screenshot_base64: str, openai_key: str) -> Dict[str, Any]:
+    """
+    Vision AI: анализирует скриншот + HTML через GPT-4 Vision
+    Возвращает инструкцию для regex замены
+    """
     
-    # 3. Заменяем ВСЕ ссылки
-    a_count = 0
-    def replace_a(match):
-        nonlocal a_count
-        a_count += 1
-        before_href = match.group(1) if match.group(1) else ''
-        after_href = match.group(2) if match.group(2) else ''
-        if a_count == 1:
-            return f'<a {before_href}href="{{{{cta_url}}}}"{after_href}>{{{{cta_text}}}}</a>'
-        else:
-            return f'<a {before_href}href="{{{{link_url_{a_count}}}}}"{after_href}>{{{{link_text_{a_count}}}}}</a>'
+    # Извлекаем текст из HTML для контекста
+    text_content = re.sub(r'<[^>]+>', ' ', html)
+    text_content = re.sub(r'\s+', ' ', text_content).strip()[:2000]
     
-    result = re.sub(r'<a\s+([^>]*?)href=["\'][^"\']*["\']([^>]*)>(.*?)</a>', replace_a, result, flags=re.DOTALL | re.IGNORECASE)
-    replacements.append(f"Ссылки: {a_count} → слоты")
+    print(f"[INFO] Analyzing with Vision AI: {len(html)} chars HTML, screenshot provided")
     
-    # 4. Заменяем изображения
-    img_count = 0
-    def replace_img(match):
-        nonlocal img_count
-        img_count += 1
-        attrs_before = match.group(1) if match.group(1) else ''
-        attrs_after = match.group(2) if match.group(2) else ''
-        return f'<img {attrs_before}src="{{{{photo_url}}}}" alt="{{{{name}}}}"{attrs_after}'
+    prompt = f"""You are analyzing a screenshot of HTML block that user wants to convert to a template with loops.
+
+USER TASK: Find repeating blocks in this screenshot and create loop instructions.
+
+HTML text content (for reference):
+{text_content}
+
+YOUR INSTRUCTIONS:
+1. Look at the screenshot - identify visually repeating blocks (3+ similar items)
+2. Find EXACT TEXT that appears BEFORE first repeating item and AFTER last item (markers)
+3. Extract field examples from repeating blocks (numbers, text, etc.)
+
+CRITICAL RULES:
+- start_marker and end_marker MUST be EXACT VISIBLE TEXT from screenshot/HTML
+- Do NOT use class names or technical markers
+- Copy-paste examples EXACTLY as they appear
+- Look for: numbers (73%, 52%, 2.5x), names, descriptions
+
+Return ONLY JSON in this format:
+{{
+  "loops": [{{
+    "start_marker": "Text right before first repeating block",
+    "end_marker": "Text right after last repeating block",
+    "variable_name": "items",
+    "fields": [
+      {{"name": "value", "example": "73%"}},
+      {{"name": "description", "example": "companies using AI"}}
+    ]
+  }}],
+  "variables": []
+}}
+
+Return ONLY valid JSON, no explanations."""
     
-    result = re.sub(r'<img\s+([^>]*?)src=["\'][^"\']*["\']([^>]*)', replace_img, result, flags=re.IGNORECASE)
-    replacements.append(f"Изображения: {img_count} → слоты")
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {openai_key}",
+        "Content-Type": "application/json"
+    }
     
-    # 5. Оборачиваем повторяющиеся блоки в {{#speakers}}
-    if '<!-- Спикер' in html or 'speaker' in html.lower():
-        speaker_matches = list(re.finditer(r'(<!--\s*Спикер.*?-->.*?</tr>)', result, re.DOTALL | re.IGNORECASE))
-        if len(speaker_matches) >= 2:
-            first_start = speaker_matches[0].start()
-            last_end = speaker_matches[-1].end()
-            speaker_block = result[first_start:last_end]
-            result = result[:first_start] + '{{#speakers}}' + speaker_block + '{{/speakers}}' + result[last_end:]
-            replacements.append(f"Спикеры: обёрнуто {len(speaker_matches)} блоков")
+    # Убираем data:image prefix если есть
+    if screenshot_base64.startswith('data:image'):
+        screenshot_base64 = screenshot_base64.split(',')[1]
     
-    diff = len(html) - len(result)
-    print(f"[INFO] Замены: {', '.join(replacements)}. Разница: {diff} символов")
+    payload = {
+        "model": "gpt-4o",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{screenshot_base64}",
+                            "detail": "high"
+                        }
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 2000,
+        "temperature": 0.3
+    }
     
-    return result
+    print(f"[INFO] Sending request to OpenAI Vision API...")
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    
+    if response.status_code != 200:
+        print(f"[ERROR] OpenAI Vision API error: {response.status_code} {response.text}")
+        return {"loops": [], "variables": []}
+    
+    result = response.json()
+    ai_response = result['choices'][0]['message']['content']
+    print(f"[INFO] Vision AI response: {ai_response[:500]}")
+    
+    # Парсим JSON из ответа
+    json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
+    if not json_match:
+        print(f"[ERROR] No JSON found in Vision AI response")
+        return {"loops": [], "variables": []}
+    
+    instructions = json.loads(json_match.group(0))
+    print(f"[INFO] Vision AI parsed: {len(instructions.get('loops', []))} loops")
+    
+    return instructions
+
+def analyze_template_with_ai(html: str, api_key: str) -> Dict[str, Any]:
+    """
+    ИИ АНАЛИЗИРУЕТ HTML и возвращает JSON-инструкцию для regex
+    НЕ генерирует код, только маркирует что заменить
+    
+    Возвращает:
+    {
+      "loops": [{"pattern": "regex", "variable_name": "items", "fields": ["title", "desc"]}],
+      "variables": [{"pattern": "regex", "variable_name": "heading", "type": "text|url|image"}]
+    }
+    """
+    
+    # Извлекаем текстовое содержимое для анализа
+    text_content = re.sub(r'<[^>]+>', ' ', html)
+    text_content = re.sub(r'\s+', ' ', text_content).strip()
+    
+    # Считаем сколько раз встречаются числа (признак повторов)
+    numbers = re.findall(r'\d+%|\d+\.\d+x|\d+ [а-яА-Яa-zA-Z]+', text_content)
+    print(f"[DEBUG] Found {len(numbers)} numbers in text: {numbers[:5]}")
+    
+    prompt = f"""Analyze this HTML and return ONLY a JSON instruction for regex replacement. Do NOT generate code.
+
+HTML (first 7000 chars):
+{html[:7000]}
+
+Text content preview (look for repeating patterns):
+{text_content[:2000]}
+
+YOUR TASK: Find REPEATING PATTERNS (3+ similar blocks with same structure but different content).
+
+STEP 1: Look for repeating numbers/percentages in text above
+Examples: "73%", "52%", "2.5x" appearing multiple times = LOOP!
+
+STEP 2: Find ACTUAL TEXT that comes:
+- RIGHT BEFORE the first repeating item
+- RIGHT AFTER the last repeating item
+
+CRITICAL RULES:
+1. start_marker and end_marker = ACTUAL VISIBLE TEXT, NOT class names
+2. "example" field = copy-paste EXACT text from HTML (don't change it!)
+3. Look for 3+ items with identical HTML structure
+
+Example GOOD JSON:
+{{
+  "loops": [{{
+    "start_marker": "📊 Ключевые показатели",
+    "end_marker": "💡 Почему это важно",
+    "variable_name": "stats",
+    "fields": [
+      {{"name": "percentage", "example": "73%"}},
+      {{"name": "description", "example": "компаний уже внедрили AI"}}
+    ]
+  }}]
+}}
+
+Return ONLY valid JSON, no explanations."""
+
+    # Используем OpenRouter для доступа к Claude
+    response = requests.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://poehali.dev',
+            'X-Title': 'Template Generator'
+        },
+        json={
+            'model': 'anthropic/claude-3.5-sonnet',
+            'messages': [{'role': 'user', 'content': prompt}],
+            'max_tokens': 2000
+        },
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f'OpenRouter API error: {response.status_code} {response.text}')
+    
+    result = response.json()
+    content = result['choices'][0]['message']['content'].strip()
+    
+    print(f"[DEBUG] AI raw response: {content[:500]}")
+    
+    # Extract JSON from markdown code blocks if present
+    if '```json' in content:
+        content = content.split('```json')[1].split('```')[0].strip()
+    elif '```' in content:
+        content = content.split('```')[1].split('```')[0].strip()
+    
+    parsed = json.loads(content)
+    print(f"[DEBUG] AI parsed JSON: {json.dumps(parsed, ensure_ascii=False)[:300]}")
+    return parsed
+
+def convert_to_template_ai(html: str, api_key: str) -> str:
+    """
+    LEGACY: Полная генерация через AI (медленно, дорого)
+    Используется если use_ai=true и hybrid_ai=false
+    """
+    
+    prompt = f"""CRITICAL: Copy ALL HTML structure, tags, attributes, and styles EXACTLY. Only replace TEXT CONTENT with Mustache variables.
+
+PRESERVE 100%:
+- All <style> blocks
+- All inline style="..." attributes  
+- All class names
+- All CSS (colors, gradients, padding, margins, borders)
+- All HTML structure and nesting
+
+REPLACE ONLY:
+- Text inside tags → {{{{variable}}}}
+- href/src URLs → {{{{url_variable}}}}
+
+BAD (removes styles):
+<div class="header"><h1>{{{{title}}}}</h1></div>
+
+GOOD (preserves everything):
+<div class="header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px;">
+  <h1 style="color: #fff; font-size: 32px; margin: 0;">{{{{title}}}}</h1>
+</div>
+
+Return ONLY the converted HTML, no explanations.
+
+HTML to convert:
+{html}"""
+
+    try:
+        response = requests.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'anthropic/claude-3.5-sonnet',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'max_tokens': 16000
+            },
+            timeout=60
+        )
+        
+        if response.status_code != 200:
+            print(f"[ERROR] OpenRouter failed: {response.status_code} {response.text}")
+            raise Exception(f"OpenRouter error: {response.status_code}")
+        
+        result = response.json()
+        html_result = result['choices'][0]['message']['content'].strip()
+        
+        # Убираем markdown обёртки если ИИ добавил
+        html_result = re.sub(r'^```html\s*', '', html_result)
+        html_result = re.sub(r'\s*```$', '', html_result)
+        
+        print(f"[INFO] AI conversion: {len(html)} → {len(html_result)} chars")
+        return html_result
+        
+    except Exception as e:
+        print(f"[ERROR] AI conversion failed: {str(e)}")
+        raise Exception(f"Template conversion failed: {str(e)}")

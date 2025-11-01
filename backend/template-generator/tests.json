@@ -11,7 +11,7 @@
       "bodyMatcher": "partial"
     },
     {
-      "name": "Valid template generation",
+      "name": "Valid regex mode",
       "method": "POST",
       "body": {
         "html_content": "<html><body><h1>Hello World</h1><p>This is a test email.</p><a href='#'>Click here</a></body></html>",
@@ -22,6 +22,20 @@
       "expectedStatus": 200,
       "expectedBody": {
         "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Vision AI mode - missing screenshot",
+      "method": "POST",
+      "body": {
+        "html_content": "<div>Stats: 73%, 52%, 2.5x</div>",
+        "vision_ai": true,
+        "test_mode": true
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "screenshot required for vision_ai mode"
       },
       "bodyMatcher": "partial"
     }
