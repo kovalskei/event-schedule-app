@@ -151,20 +151,30 @@ def convert_to_template_ai(html: str, api_key: str) -> str:
     4. Верни ТОЛЬКО HTML, без объяснений
     """
     
-    prompt = f"""Convert HTML email to Mustache template.
+    prompt = f"""CRITICAL: Copy ALL HTML structure, tags, attributes, and styles EXACTLY. Only replace TEXT CONTENT with Mustache variables.
 
-Rules:
-1. Keep ALL styles unchanged (linear-gradient, colors, padding, borders)
-2. Replace text content with {{{{variables}}}}
-3. Replace URLs with {{{{url_variables}}}}
-4. Return ONLY HTML, no explanations
+PRESERVE 100%:
+- All <style> blocks
+- All inline style="..." attributes  
+- All class names
+- All CSS (colors, gradients, padding, margins, borders)
+- All HTML structure and nesting
 
-Example:
-<h1 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Hello</h1>
-→
-<h1 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">{{{{heading}}}}</h1>
+REPLACE ONLY:
+- Text inside tags → {{{{variable}}}}
+- href/src URLs → {{{{url_variable}}}}
 
-HTML:
+BAD (removes styles):
+<div class="header"><h1>{{{{title}}}}</h1></div>
+
+GOOD (preserves everything):
+<div class="header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px;">
+  <h1 style="color: #fff; font-size: 32px; margin: 0;">{{{{title}}}}</h1>
+</div>
+
+Return ONLY the converted HTML, no explanations.
+
+HTML to convert:
 {html}"""
 
     try:
