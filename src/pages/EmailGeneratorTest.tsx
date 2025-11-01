@@ -1,150 +1,142 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { Loader2, Sparkles, Mail, FileText } from 'lucide-react';
 
-const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
+const EVENTS_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
+const GENERATE_URL = 'https://functions.poehali.dev/d2a2e722-c697-4c1e-a3c7-af2366b408af';
 
 interface Event {
   id: number;
   name: string;
-  description: string;
 }
 
-interface EmailTemplate {
+interface Template {
   id: number;
   name: string;
-  content_type_name: string;
-  html_template: string;
   subject_template: string;
 }
 
 export default function EmailGeneratorTest() {
   const { toast } = useToast();
   const [events, setEvents] = useState<Event[]>([]);
-  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
-  const [eventId, setEventId] = useState('');
-  const [templateId, setTemplateId] = useState('');
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [theme, setTheme] = useState('Анонс спикеров по адаптации и мотивации сотрудников');
   const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(true);
   const [result, setResult] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadEvents();
   }, []);
 
   useEffect(() => {
-    if (eventId) {
-      loadTemplates(parseInt(eventId));
+    if (selectedEventId) {
+      loadTemplates(parseInt(selectedEventId));
     }
-  }, [eventId]);
+  }, [selectedEventId]);
 
   const loadEvents = async () => {
-    setLoadingData(true);
     try {
-      const res = await fetch(`${EVENTS_MANAGER_URL}?action=list_events`);
+      const res = await fetch(`${EVENTS_URL}?action=list_events`);
       const data = await res.json();
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      setEvents(data.events || []);
       if (data.events?.length > 0) {
-        setEventId(data.events[0].id.toString());
+        setEvents(data.events);
+        setSelectedEventId(data.events[0].id.toString());
       }
     } catch (err) {
       toast({
-        title: 'Ошибка загрузки',
-        description: err instanceof Error ? err.message : 'Не удалось загрузить мероприятия',
+        title: 'Ошибка',
+        description: 'Не удалось загрузить мероприятия',
         variant: 'destructive',
       });
-    } finally {
-      setLoadingData(false);
     }
   };
 
-  const loadTemplates = async (eventIdNum: number) => {
+  const loadTemplates = async (eventId: number) => {
     try {
-      const res = await fetch(`${EVENTS_MANAGER_URL}?action=get_event&event_id=${eventIdNum}`);
+      const res = await fetch(`${EVENTS_URL}?action=get_event&event_id=${eventId}`);
       const data = await res.json();
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      setTemplates(data.email_templates || []);
       if (data.email_templates?.length > 0) {
-        setTemplateId(data.email_templates[0].id.toString());
+        setTemplates(data.email_templates);
+        setSelectedTemplateId(data.email_templates[0].id.toString());
       }
     } catch (err) {
       toast({
-        title: 'Ошибка загрузки',
-        description: err instanceof Error ? err.message : 'Не удалось загрузить шаблоны',
+        title: 'Ошибка',
+        description: 'Не удалось загрузить шаблоны',
         variant: 'destructive',
       });
     }
   };
 
-  const generateEmail = async () => {
+  const handleGenerate = async () => {
+    if (!selectedEventId || !selectedTemplateId) return;
+
     setLoading(true);
-    setError(null);
     setResult(null);
 
     try {
-      const response = await fetch('https://functions.poehali.dev/d2a2e722-c697-4c1e-a3c7-af2366b408af', {
+      const res = await fetch(GENERATE_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          event_id: parseInt(eventId),
-          template_id: parseInt(templateId),
-          theme: theme,
+          event_id: parseInt(selectedEventId),
+          template_id: parseInt(selectedTemplateId),
+          theme,
           test_mode: true,
         }),
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
       if (data.success) {
         setResult(data);
+        toast({
+          title: '✅ Готово!',
+          description: 'Письмо успешно сгенерировано',
+        });
       } else {
-        setError(data.error || 'Unknown error');
+        throw new Error(data.error || 'Ошибка генерации');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Network error');
+      toast({
+        title: 'Ошибка',
+        description: err instanceof Error ? err.message : 'Не удалось сгенерировать письмо',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">🧪 Тест генерации email</h1>
-          <p className="text-slate-600">AI генерирует письмо из шаблона + базы знаний по теме</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Заголовок */}
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">🧪 Тест генерации писем</h1>
+          <p className="text-gray-600">AI создает письмо из шаблона + базы знаний</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* Параметры */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Панель настроек */}
           <Card>
             <CardHeader>
-              <CardTitle>Параметры генерации</CardTitle>
-              <CardDescription>Настройте параметры для генерации письма</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-blue-600" />
+                Настройки генерации
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Мероприятие */}
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-2 block">Мероприятие</label>
-                <Select value={eventId} onValueChange={setEventId} disabled={loadingData}>
+                <label className="block text-sm font-medium mb-2">Мероприятие</label>
+                <Select value={selectedEventId} onValueChange={setSelectedEventId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Выберите мероприятие" />
                   </SelectTrigger>
@@ -158,9 +150,10 @@ export default function EmailGeneratorTest() {
                 </Select>
               </div>
 
+              {/* Шаблон */}
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-2 block">Шаблон письма</label>
-                <Select value={templateId} onValueChange={setTemplateId} disabled={!eventId || templates.length === 0}>
+                <label className="block text-sm font-medium mb-2">Шаблон письма</label>
+                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Выберите шаблон" />
                   </SelectTrigger>
@@ -172,24 +165,23 @@ export default function EmailGeneratorTest() {
                     ))}
                   </SelectContent>
                 </Select>
-                {eventId && templates.length === 0 && (
-                  <p className="text-xs text-slate-500 mt-1">Для этого мероприятия пока нет шаблонов</p>
-                )}
               </div>
 
+              {/* Тема */}
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-2 block">Тема письма</label>
+                <label className="block text-sm font-medium mb-2">Тема письма</label>
                 <Textarea
                   value={theme}
                   onChange={(e) => setTheme(e.target.value)}
-                  placeholder="Анонс спикеров по адаптации и мотивации"
+                  placeholder="О чем должно быть письмо?"
                   rows={3}
                 />
               </div>
 
+              {/* Кнопка */}
               <Button
-                onClick={generateEmail}
-                disabled={loading || !eventId || !templateId}
+                onClick={handleGenerate}
+                disabled={loading || !selectedEventId || !selectedTemplateId}
                 className="w-full"
                 size="lg"
               >
@@ -199,71 +191,89 @@ export default function EmailGeneratorTest() {
                     Генерирую...
                   </>
                 ) : (
-                  '🚀 Генерировать письмо'
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Сгенерировать письмо
+                  </>
                 )}
               </Button>
-
-              {error && (
-                <Alert variant="destructive">
-                  <XCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              {result && (
-                <Alert>
-                  <CheckCircle2 className="h-4 w-4" />
-                  <AlertDescription>Письмо успешно сгенерировано!</AlertDescription>
-                </Alert>
-              )}
             </CardContent>
           </Card>
 
-          {/* Результат AI */}
+          {/* Результат */}
           {result && (
             <Card>
               <CardHeader>
-                <CardTitle>AI Reasoning</CardTitle>
-                <CardDescription>Почему AI выбрал этих спикеров</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="h-5 w-5 text-green-600" />
+                  Результат
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-slate-700 mb-4">{result.ai_reasoning}</p>
+              <CardContent className="space-y-4">
+                {/* Тема письма */}
+                <div>
+                  <div className="text-sm font-medium text-gray-500 mb-1">Тема письма:</div>
+                  <div className="font-semibold text-gray-900">{result.subject}</div>
+                </div>
 
-                <h4 className="font-semibold text-slate-900 mb-2">Выбранные спикеры:</h4>
-                <ul className="space-y-1">
-                  {result.selected_speakers?.map((speaker: any, idx: number) => (
-                    <li key={idx} className="text-sm text-slate-600">
-                      • {typeof speaker === 'string' ? speaker : speaker.name || JSON.stringify(speaker)}
-                    </li>
-                  ))}
-                </ul>
+                {/* AI Reasoning */}
+                {result.ai_reasoning && (
+                  <div>
+                    <div className="text-sm font-medium text-gray-500 mb-1">AI reasoning:</div>
+                    <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
+                      {result.ai_reasoning}
+                    </div>
+                  </div>
+                )}
 
-                <details className="mt-4">
-                  <summary className="cursor-pointer text-sm font-medium text-slate-700">
-                    Данные для шаблона
-                  </summary>
-                  <pre className="mt-2 text-xs bg-slate-100 p-3 rounded overflow-auto max-h-60">
-                    {JSON.stringify(result.data, null, 2)}
-                  </pre>
-                </details>
+                {/* Спикеры */}
+                {result.selected_speakers && result.selected_speakers.length > 0 && (
+                  <div>
+                    <div className="text-sm font-medium text-gray-500 mb-2">Выбранные спикеры:</div>
+                    <div className="space-y-1">
+                      {result.selected_speakers.map((speaker: string, i: number) => (
+                        <div key={i} className="text-sm text-gray-700">
+                          • {speaker}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Кнопка просмотра HTML */}
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    const win = window.open('', '_blank');
+                    if (win) {
+                      win.document.write(result.html);
+                      win.document.close();
+                    }
+                  }}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Открыть превью письма
+                </Button>
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* Превью письма */}
+        {/* Превью HTML */}
         {result && (
           <Card>
             <CardHeader>
-              <CardTitle>Превью письма</CardTitle>
-              <CardDescription>Так выглядит сгенерированное письмо</CardDescription>
+              <CardTitle>HTML письма</CardTitle>
             </CardHeader>
             <CardContent>
-              <iframe
-                srcDoc={result.rendered_html}
-                className="w-full h-[600px] border border-slate-200 rounded-lg"
-                title="Email Preview"
-              />
+              <div className="border rounded-lg p-4 bg-white max-h-96 overflow-auto">
+                <iframe
+                  srcDoc={result.html}
+                  className="w-full h-96 border-0"
+                  title="Email Preview"
+                />
+              </div>
             </CardContent>
           </Card>
         )}
