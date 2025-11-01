@@ -156,30 +156,57 @@ def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
     Находит повторяющиеся блоки HTML (например, карточки спикеров)
     Возвращает: [(шаблон_блока, [экземпляр1, экземпляр2, ...])]
     """
-    # Ищем повторяющиеся <tr>, <div>, <li> с похожей структурой
+    # Ищем повторяющиеся блоки с минимальной вложенностью
+    # Не используем .*? для div — слишком жадный
     patterns = [
-        r'(<tr[^>]*>.*?</tr>)',
-        r'(<div[^>]*class="[^"]*card[^"]*"[^>]*>.*?</div>)',
-        r'(<li[^>]*>.*?</li>)'
+        r'(<tr[^>]*>(?:(?!</tr>).)*</tr>)',  # table rows
+        r'(<li[^>]*>(?:(?!</li>).)*</li>)',  # list items
     ]
     
     repeating = []
     
+    # Ищем последовательные div с одинаковой структурой
+    div_pattern = r'<div([^>]*)>((?:(?!<div[^>]*>|</div>).)*)</div>'
+    all_divs = list(re.finditer(div_pattern, html, re.DOTALL))
+    
+    # Группируем последовательные div с похожей структурой
+    if len(all_divs) >= 2:
+        groups = []
+        for match in all_divs:
+            div_html = match.group(0)
+            # Извлекаем структуру без текста
+            structure = re.sub(r'>([^<]+)<', '><', div_html)
+            
+            matched = False
+            for group in groups:
+                group_structure = re.sub(r'>([^<]+)<', '><', group[0])
+                similarity = SequenceMatcher(None, structure, group_structure).ratio()
+                if similarity > 0.8:  # Более строгое сходство
+                    group.append(div_html)
+                    matched = True
+                    break
+            
+            if not matched:
+                groups.append([div_html])
+        
+        # Берём только группы с 3+ элементами (более уверенное распознавание)
+        for group in groups:
+            if len(group) >= 3:
+                repeating.append((group[0], group))
+    
+    # Ищем другие паттерны
     for pattern in patterns:
         blocks = re.findall(pattern, html, re.DOTALL)
         if len(blocks) < 2:
             continue
         
-        # Группируем похожие блоки (структура совпадает на 70%+)
         groups = []
         for block in blocks:
-            # Убираем текстовое содержимое для сравнения структуры
             structure = re.sub(r'>([^<]+)<', '><', block)
             
             matched = False
             for group in groups:
                 group_structure = re.sub(r'>([^<]+)<', '><', group[0])
-                # Сравниваем структуру
                 similarity = SequenceMatcher(None, structure, group_structure).ratio()
                 if similarity > 0.7:
                     group.append(block)
@@ -189,7 +216,6 @@ def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
             if not matched:
                 groups.append([block])
         
-        # Берём только группы с 2+ элементами
         for group in groups:
             if len(group) >= 2:
                 repeating.append((group[0], group))
