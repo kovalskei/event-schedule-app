@@ -10,6 +10,7 @@ import CampaignHistory from "./pages/CampaignHistory";
 import AISettings from "./pages/AISettings";
 import EventsManager from "./pages/EventsManager";
 import TemplateTest from "./pages/TemplateTest";
+import EmailGeneratorTest from "./pages/EmailGeneratorTest";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
           <Route path="/ai-settings" element={<AISettings />} />
           <Route path="/dashboard" element={<Index />} />
           <Route path="/template-test" element={<TemplateTest />} />
+          <Route path="/email-test" element={<EmailGeneratorTest />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
