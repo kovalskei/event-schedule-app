@@ -116,14 +116,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 subject_hint, key_message = plan_row
         
         query_text = key_message if key_message else (instructions if instructions else template_name)
-        query_embedding = create_embedding(query_text, openrouter_key)
         
-        cur.execute(
-            "SELECT content, item_type, metadata FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + 
-            str(event_id) + " ORDER BY embedding <-> ARRAY[" + ",".join(str(x) for x in query_embedding) + "] LIMIT 5"
-        )
-        
-        rag_results = cur.fetchall()
+        try:
+            query_embedding = create_embedding(query_text, openrouter_key)
+            cur.execute(
+                "SELECT content, item_type, metadata FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + 
+                str(event_id) + " ORDER BY embedding <-> ARRAY[" + ",".join(str(x) for x in query_embedding) + "] LIMIT 5"
+            )
+            rag_results = cur.fetchall()
+        except:
+            cur.execute(
+                "SELECT content, item_type, metadata FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + 
+                str(event_id) + " LIMIT 5"
+            )
+            rag_results = cur.fetchall()
         
         if not rag_results:
             cur.close()
