@@ -68,15 +68,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         try:
             if hybrid_ai:
                 # Гибридный AI-режим: AI только анализирует, regex применяет
-                anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '')
-                if not anthropic_key:
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
+                if not openrouter_key:
                     return {
                         'statusCode': 500,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': 'ANTHROPIC_API_KEY not configured'})
+                        'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured for hybrid mode'})
                     }
                 print("[INFO] Using hybrid AI mode: AI analyzes + regex applies")
-                instructions = analyze_template_with_ai(html_content, anthropic_key)
+                instructions = analyze_template_with_ai(html_content, openrouter_key)
                 print(f"[INFO] AI found {len(instructions.get('loops', []))} loops, {len(instructions.get('variables', []))} variables")
                 html_with_slots, result_data = apply_ai_instructions(html_content, instructions)
             elif use_ai:
@@ -454,26 +454,28 @@ Rules:
 3. Mark standalone dynamic text/urls/images
 4. Return ONLY valid JSON, no explanations"""
 
+    # Используем OpenRouter для доступа к Claude
     response = requests.post(
-        'https://api.anthropic.com/v1/messages',
+        'https://openrouter.ai/api/v1/chat/completions',
         headers={
-            'x-api-key': api_key,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://poehali.dev',
+            'X-Title': 'Template Generator'
         },
         json={
-            'model': 'claude-3-5-sonnet-20241022',
-            'max_tokens': 2000,
-            'messages': [{'role': 'user', 'content': prompt}]
+            'model': 'anthropic/claude-3.5-sonnet',
+            'messages': [{'role': 'user', 'content': prompt}],
+            'max_tokens': 2000
         },
         timeout=30
     )
     
     if response.status_code != 200:
-        raise Exception(f'Claude API error: {response.status_code} {response.text}')
+        raise Exception(f'OpenRouter API error: {response.status_code} {response.text}')
     
     result = response.json()
-    content = result['content'][0]['text'].strip()
+    content = result['choices'][0]['message']['content'].strip()
     
     # Extract JSON from markdown code blocks if present
     if '```json' in content:
