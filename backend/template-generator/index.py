@@ -205,6 +205,18 @@ def render_template(template: str, data: Dict[str, Any]) -> str:
         value = data.get(field_name, default_value)
         result = result.replace(match.group(0), str(value))
     
+    # 3. Обрабатываем переменные без дефолта {{field}}
+    no_default_pattern = r'\{\{([a-zA-Z_0-9]+)\}\}'
+    for match in re.finditer(no_default_pattern, result):
+        field_name = match.group(1)
+        
+        # Пропускаем, если это уже обработанный массив
+        if field_name in data and isinstance(data[field_name], list):
+            continue
+        
+        value = data.get(field_name, f'[missing: {field_name}]')
+        result = result.replace(match.group(0), str(value))
+    
     return result
 
 

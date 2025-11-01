@@ -283,7 +283,14 @@ def generate_email_content_with_ai(
 
 def extract_template_variables(template_html: str) -> List[str]:
     """
-    Извлекает все переменные из шаблона {{var_name|default}}
+    Извлекает все переменные из шаблона {{var_name|default}} или {{var_name}}
     """
-    pattern = r'\{\{([a-zA-Z_0-9]+)\|[^}]*\}\}'
-    return list(set(re.findall(pattern, template_html)))
+    # Ищем переменные с дефолтами: {{var|default}}
+    pattern_with_default = r'\{\{([a-zA-Z_0-9]+)\|[^}]*\}\}'
+    vars_with_default = re.findall(pattern_with_default, template_html)
+    
+    # Ищем переменные без дефолтов: {{var}}
+    pattern_no_default = r'\{\{([a-zA-Z_0-9]+)\}\}'
+    vars_no_default = re.findall(pattern_no_default, template_html)
+    
+    return list(set(vars_with_default + vars_no_default))
