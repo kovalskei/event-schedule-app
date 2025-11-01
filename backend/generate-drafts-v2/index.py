@@ -150,6 +150,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         cta_url = cta_row[0] if cta_row and cta_row[0] else 'https://human-obuchenie.ru'
         cta_text_default = cta_row[1] if cta_row and cta_row[1] else 'Узнать больше'
         
+        subject_instruction = ""
+        if subject_hint:
+            subject_instruction = f"""
+ТЕМА ПИСЬМА ФИКСИРОВАНА (из контент-плана):
+"{subject_hint}"
+
+⚠️ НЕ МЕНЯЙ ТЕМУ! Используй её как есть в поле "subject".
+"""
+        else:
+            subject_instruction = "5. subject: тема письма до 50 символов"
+        
         prompt = f"""Ты — эксперт по email-маркетингу для мероприятий.
 
 КОНТЕКСТ (релевантные данные из программы и болей HR):
@@ -159,7 +170,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 {instructions}
 
 {"КЛЮЧЕВОЕ СООБЩЕНИЕ: " + key_message if key_message else ""}
-{"ПОДСКАЗКА ДЛЯ ТЕМЫ: " + subject_hint if subject_hint else ""}
+
+{subject_instruction}
 
 ЗАДАЧА:
 Заполни слоты для email-шаблона. НЕ генерируй HTML! Верни ТОЛЬКО данные для слотов.
@@ -173,14 +185,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 3. speakers: массив из 2-3 спикеров из контекста, выбери самых релевантных
    - Каждый спикер: {{"name": "Имя", "title": "Должность", "pitch": "Что даст доклад (1 предложение)", "photo_url": "https://via.placeholder.com/150"}}
 4. cta_text: текст для кнопки (например: "Посмотреть программу", "Зарегистрироваться")
-5. subject: тема письма до 50 символов
 
 CTA ссылка будет подставлена автоматически: {cta_url}
 Текст CTA по умолчанию: {cta_text_default}
 
 Верни JSON в точном формате:
 {{
-  "subject": "тема письма",
+  "subject": "{subject_hint if subject_hint else 'тема письма'}",
   "headline": "заголовок",
   "intro_text": "вступительный текст",
   "speakers": [
@@ -197,6 +208,9 @@ CTA ссылка будет подставлена автоматически: {
         
         try:
             slots_data = json.loads(generated)
+            
+            if subject_hint:
+                slots_data['subject'] = subject_hint
             
             slots_data['cta_url'] = cta_url
             
