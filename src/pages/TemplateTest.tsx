@@ -56,7 +56,7 @@ const TemplateTest = () => {
   const [slotsSchema, setSlotsSchema] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [useAI, setUseAI] = useState(false);
+  const [mode, setMode] = useState<'regex' | 'hybrid' | 'legacy'>('regex');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,7 +91,8 @@ const TemplateTest = () => {
         body: JSON.stringify({
           html_content: originalHTML,
           test_mode: true,
-          use_ai: useAI
+          use_ai: mode === 'legacy',
+          hybrid_ai: mode === 'hybrid'
         })
       });
 
@@ -144,30 +145,63 @@ const TemplateTest = () => {
             📋 Загрузить демо
           </button>
 
-          <label className="flex items-center gap-2 bg-white border-2 border-gray-300 px-6 py-3 rounded-lg cursor-pointer hover:border-purple-500">
-            <input 
-              type="checkbox" 
-              checked={useAI}
-              onChange={(e) => setUseAI(e.target.checked)}
-              className="w-4 h-4"
-            />
-            <span className="font-medium text-gray-700">🤖 AI</span>
-            <span className="text-xs text-gray-500">(медленнее)</span>
-          </label>
+          <div className="flex items-center gap-2 bg-white border-2 border-gray-300 px-4 py-2 rounded-lg">
+            <span className="text-sm font-medium text-gray-600">Режим:</span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setMode('regex')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  mode === 'regex' 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                ⚡ Regex
+              </button>
+              <button
+                onClick={() => setMode('hybrid')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  mode === 'hybrid' 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                🧠 Hybrid AI
+              </button>
+              <button
+                onClick={() => setMode('legacy')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  mode === 'legacy' 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                🤖 Legacy AI
+              </button>
+            </div>
+          </div>
 
           <button
             onClick={handleConvert}
             disabled={loading || !originalHTML}
             className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? '⏳ Преобразую...' : `⚡ Преобразовать (${useAI ? 'AI' : 'Regex'})`}
+            {loading ? '⏳ Преобразую...' : '⚡ Преобразовать'}
           </button>
           
           {loading && (
             <span className="text-sm text-gray-500">
-              {useAI ? '🤖 Claude работает (может быть долго)...' : '⚡ Быстрая regex-замена...'}
+              {mode === 'regex' && '⚡ Быстрая regex-замена...'}
+              {mode === 'hybrid' && '🧠 AI анализ + regex замена...'}
+              {mode === 'legacy' && '🤖 Полная генерация через AI...'}
             </span>
           )}
+          
+          <div className="w-full text-xs text-gray-500 bg-gray-100 px-3 py-2 rounded">
+            {mode === 'regex' && '⚡ Regex: мгновенно, бесплатно, находит циклы автоматически'}
+            {mode === 'hybrid' && '🧠 Hybrid AI: AI анализирует → regex применяет (быстрее Legacy, точнее Regex)'}
+            {mode === 'legacy' && '🤖 Legacy AI: полная генерация кода через Claude (медленно, дорого)'}
+          </div>
         </div>
 
         {originalHTML && (
