@@ -38,7 +38,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         content_type_id = body_data.get('content_type_id')
         template_name = body_data.get('name', 'Шаблон')
         test_mode = body_data.get('test_mode', False)
-        use_ai = body_data.get('use_ai', False)  # Новый параметр: использовать AI или regex
+        use_ai = body_data.get('use_ai', False)  # Legacy AI (полная генерация)
+        hybrid_ai = body_data.get('hybrid_ai', False)  # Гибрид: AI анализ + regex замена
         
         print(f"[INFO] Processing HTML: {len(html_content) if html_content else 0} chars")
         
@@ -65,8 +66,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         try:
-            if use_ai:
-                # AI-режим: медленнее, но умнее
+            if hybrid_ai:
+                # Гибридный AI-режим: AI только анализирует, regex применяет
+                anthropic_key = os.environ.get('ANTHROPIC_API_KEY', '')
+                if not anthropic_key:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'ANTHROPIC_API_KEY not configured'})
+                    }
+                print("[INFO] Using hybrid AI mode: AI analyzes + regex applies")
+                instructions = analyze_template_with_ai(html_content, anthropic_key)
+                print(f"[INFO] AI found {len(instructions.get('loops', []))} loops, {len(instructions.get('variables', []))} variables")
+                html_with_slots, result_data = apply_ai_instructions(html_content, instructions)
+            elif use_ai:
+                # Legacy AI-режим: полная генерация (медленно, дорого)
                 openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
                 if not openrouter_key:
                     return {
@@ -74,10 +88,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                         'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
                     }
+                print("[INFO] Using legacy AI mode (full generation)")
                 html_with_slots = convert_to_template_ai(html_content, openrouter_key)
                 result_data = {"variables": {}, "slots_schema": {}}
             else:
-                # Regex-режим: мгновенно, сохраняет все стили + распознаёт циклы
+                # Pure regex-режим: мгновенно, сохраняет все стили
+                print("[INFO] Using pure regex mode")
                 html_with_slots, result_data = convert_to_template_regex(html_content)
                 print(f"[INFO] Regex conversion: found {len(result_data.get('variables', {}))} variables")
                 print(f"[INFO] Regex conversion: found {len(result_data.get('slots_schema', {}))} schema fields")
@@ -331,15 +347,146 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
     
     return result, {"variables": variables, "slots_schema": slots_schema}
 
+def apply_ai_instructions(html: str, instructions: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """
+    Применяет AI-инструкции через regex (без генерации кода AI)
+    
+    Args:
+        html: исходный HTML
+        instructions: JSON от analyze_template_with_ai
+    
+    Returns:
+        (преобразованный HTML, переменные с схемой)
+    """
+    result = html
+    variables = {}
+    slots_schema = {}
+    
+    # Шаг 1: Применяем циклы
+    for loop in instructions.get('loops', []):
+        start = loop.get('start_marker', '')
+        end = loop.get('end_marker', '')
+        var_name = loop.get('variable_name', 'items')
+        fields = loop.get('fields', [])
+        
+        # Ищем блок между маркерами
+        pattern = re.escape(start) + r'(.*?)' + re.escape(end)
+        match = re.search(pattern, result, re.DOTALL)
+        
+        if not match:
+            continue
+        
+        block = match.group(1)
+        
+        # Заменяем поля в блоке на переменные
+        item_template = block
+        item_vars = {}
+        
+        for field in fields:
+            field_name = field.get('name', 'field')
+            example = field.get('example', '')
+            
+            if example:
+                # Заменяем конкретный пример на переменную
+                item_template = item_template.replace(example, f'{{{{ {field_name} }}}}')
+                item_vars[field_name] = example
+        
+        # Создаем цикл
+        loop_html = f'{{{{#{var_name}}}}}{item_template}{{{{/{var_name}}}}}'
+        
+        # Заменяем блок на цикл
+        result = result.replace(start + block + end, start + loop_html + end, 1)
+        
+        # Добавляем схему
+        slots_schema[var_name] = {
+            "type": "array",
+            "description": f"Массив {var_name}",
+            "items": {f['name']: "string" for f in fields}
+        }
+        variables[var_name] = [item_vars]
+    
+    # Шаг 2: Заменяем одиночные переменные
+    for var in instructions.get('variables', []):
+        unique_text = var.get('unique_text', '')
+        var_name = var.get('variable_name', 'var')
+        var_type = var.get('type', 'text')
+        
+        if unique_text and unique_text in result:
+            result = result.replace(unique_text, f'{{{{ {var_name} }}}}')
+            variables[var_name] = unique_text
+            slots_schema[var_name] = {
+                "type": "string",
+                "description": f"{var_type.capitalize()} поле"
+            }
+    
+    return result, {"variables": variables, "slots_schema": slots_schema}
+
+def analyze_template_with_ai(html: str, api_key: str) -> Dict[str, Any]:
+    """
+    ИИ ТОЛЬКО АНАЛИЗИРУЕТ HTML и возвращает JSON-инструкцию для regex
+    НЕ генерирует код, только маркирует что заменить
+    
+    Возвращает:
+    {
+      "loops": [{"pattern": "regex", "variable_name": "items", "fields": ["title", "desc"]}],
+      "variables": [{"pattern": "regex", "variable_name": "heading", "type": "text|url|image"}]
+    }
+    """
+    
+    prompt = f"""Analyze this HTML and return ONLY a JSON instruction for regex replacement. Do NOT generate code.
+
+HTML:
+{html[:3000]}
+
+Return JSON:
+{{
+  "loops": [
+    {{"start_marker": "unique text before loop", "end_marker": "unique text after loop", "variable_name": "stats_items", "fields": [{{"name": "number", "example": "73%"}}, {{"name": "text", "example": "компаний..."}}]}}
+  ],
+  "variables": [
+    {{"unique_text": "Ключевые показатели индустрии", "variable_name": "main_heading", "type": "text"}}
+  ]
+}}
+
+Rules:
+1. Find repeating blocks (3+ similar elements)
+2. Identify unique text markers around loops
+3. Mark standalone dynamic text/urls/images
+4. Return ONLY valid JSON, no explanations"""
+
+    response = requests.post(
+        'https://api.anthropic.com/v1/messages',
+        headers={
+            'x-api-key': api_key,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json'
+        },
+        json={
+            'model': 'claude-3-5-sonnet-20241022',
+            'max_tokens': 2000,
+            'messages': [{'role': 'user', 'content': prompt}]
+        },
+        timeout=30
+    )
+    
+    if response.status_code != 200:
+        raise Exception(f'Claude API error: {response.status_code} {response.text}')
+    
+    result = response.json()
+    content = result['content'][0]['text'].strip()
+    
+    # Extract JSON from markdown code blocks if present
+    if '```json' in content:
+        content = content.split('```json')[1].split('```')[0].strip()
+    elif '```' in content:
+        content = content.split('```')[1].split('```')[0].strip()
+    
+    return json.loads(content)
+
 def convert_to_template_ai(html: str, api_key: str) -> str:
     """
-    Преобразует HTML в Mustache шаблон через Claude 3.5 Sonnet
-    
-    Инструкции для ИИ:
-    1. Найди ВСЕ динамические элементы (заголовки, тексты, ссылки, изображения)
-    2. Замени их на {{mustache_переменные}} с понятными именами
-    3. Повторяющиеся блоки оберни в {{#массив}}...{{/массив}}
-    4. Верни ТОЛЬКО HTML, без объяснений
+    LEGACY: Полная генерация через AI (медленно, дорого)
+    Используется если use_ai=true и hybrid_ai=false
     """
     
     prompt = f"""CRITICAL: Copy ALL HTML structure, tags, attributes, and styles EXACTLY. Only replace TEXT CONTENT with Mustache variables.
