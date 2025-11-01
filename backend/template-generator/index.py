@@ -1,10 +1,11 @@
 import json
 import os
 import re
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 import psycopg2
 import requests
 from html.parser import HTMLParser
+from difflib import SequenceMatcher
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -74,21 +75,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
                     }
                 html_with_slots = convert_to_template_ai(html_content, openrouter_key)
-                variables = {}
+                result_data = {"variables": {}, "slots_schema": {}}
             else:
-                # Regex-режим: мгновенно, сохраняет все стили
-                html_with_slots, variables = convert_to_template_regex(html_content)
-                print(f"[INFO] Regex conversion: found {len(variables)} variables")
+                # Regex-режим: мгновенно, сохраняет все стили + распознаёт циклы
+                html_with_slots, result_data = convert_to_template_regex(html_content)
+                print(f"[INFO] Regex conversion: found {len(result_data.get('variables', {}))} variables")
+                print(f"[INFO] Regex conversion: found {len(result_data.get('slots_schema', {}))} schema fields")
             
             if test_mode:
                 return {
                     'statusCode': 200,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
                     'body': json.dumps({
-                        'template_content': html_with_slots,
-                        'original_length': len(html_content),
-                        'template_length': len(html_with_slots),
-                        'variables': variables,
+                        'template': html_with_slots,
+                        'variables': result_data.get('variables', {}),
+                        'slots_schema': result_data.get('slots_schema', {}),
                         'method': 'ai' if use_ai else 'regex'
                     })
                 }
@@ -150,24 +151,121 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'body': json.dumps({'error': 'Method not allowed'})
     }
 
-def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
+def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
+    """
+    Находит повторяющиеся блоки HTML (например, карточки спикеров)
+    Возвращает: [(шаблон_блока, [экземпляр1, экземпляр2, ...])]
+    """
+    # Ищем повторяющиеся <tr>, <div>, <li> с похожей структурой
+    patterns = [
+        r'(<tr[^>]*>.*?</tr>)',
+        r'(<div[^>]*class="[^"]*card[^"]*"[^>]*>.*?</div>)',
+        r'(<li[^>]*>.*?</li>)'
+    ]
+    
+    repeating = []
+    
+    for pattern in patterns:
+        blocks = re.findall(pattern, html, re.DOTALL)
+        if len(blocks) < 2:
+            continue
+        
+        # Группируем похожие блоки (структура совпадает на 70%+)
+        groups = []
+        for block in blocks:
+            # Убираем текстовое содержимое для сравнения структуры
+            structure = re.sub(r'>([^<]+)<', '><', block)
+            
+            matched = False
+            for group in groups:
+                group_structure = re.sub(r'>([^<]+)<', '><', group[0])
+                # Сравниваем структуру
+                similarity = SequenceMatcher(None, structure, group_structure).ratio()
+                if similarity > 0.7:
+                    group.append(block)
+                    matched = True
+                    break
+            
+            if not matched:
+                groups.append([block])
+        
+        # Берём только группы с 2+ элементами
+        for group in groups:
+            if len(group) >= 2:
+                repeating.append((group[0], group))
+    
+    return repeating
+
+def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
     """
     Быстрая замена через regex (без AI) — работает за миллисекунды
-    Возвращает: (преобразованный HTML, словарь найденных переменных)
+    Возвращает: (преобразованный HTML, словарь с переменными и slots_schema)
     """
     variables = {}
-    counter = {'text': 0, 'url': 0, 'img': 0}
+    slots_schema = {}
+    counter = {'text': 0, 'url': 0, 'img': 0, 'loop': 0}
     
+    # Шаг 1: Найти повторяющиеся блоки
+    repeating_blocks = find_repeating_blocks(html)
+    
+    # Шаг 2: Заменить повторяющиеся блоки на циклы
+    result = html
+    for template_block, instances in repeating_blocks:
+        if len(instances) < 2:
+            continue
+        
+        counter['loop'] += 1
+        loop_name = f"items_{counter['loop']}"
+        
+        # Извлекаем переменные из первого экземпляра
+        item_template = template_block
+        item_vars = {}
+        item_counter = 1
+        
+        # Заменяем текст на переменные
+        def replace_item_text(match):
+            nonlocal item_counter
+            text = match.group(1).strip()
+            if not text or len(text) < 3:
+                return match.group(0)
+            var_name = f"field_{item_counter}"
+            item_vars[var_name] = text
+            item_counter += 1
+            return f'>{{{{ {var_name} }}}}<'
+        
+        item_template = re.sub(r'>([^<>{}&]+)<', replace_item_text, item_template)
+        
+        # Создаём Mustache цикл
+        loop_html = f'{{{{#{loop_name}}}}}\n{item_template}\n{{{{/{loop_name}}}}}'
+        
+        # Заменяем все экземпляры на цикл
+        for instance in instances:
+            result = result.replace(instance, '', 1)
+        
+        # Вставляем цикл на место первого вхождения
+        first_pos = html.find(instances[0])
+        result = result[:first_pos] + loop_html + result[first_pos:]
+        
+        # Добавляем schema для цикла
+        slots_schema[loop_name] = {
+            "type": "array",
+            "description": f"Массив элементов (найдено {len(instances)} шт)",
+            "items": {k: "string" for k in item_vars.keys()}
+        }
+        
+        # Добавляем примеры данных
+        variables[loop_name] = [item_vars]
+    
+    # Шаг 3: Заменяем оставшиеся одиночные переменные
     def replace_text(match):
         text = match.group(1).strip()
-        # Пропускаем пустые, спец символы, короткие технические строки
         if not text or len(text) < 3 or text in ['&nbsp;', '​']:
             return match.group(0)
         
         counter['text'] += 1
         var_name = f"text_{counter['text']}"
         variables[var_name] = text
-        # Простая замена: >текст< → >{{text_1}}<
+        slots_schema[var_name] = {"type": "string", "description": "Текстовое поле"}
         return f'>{{{{ {var_name} }}}}<'
     
     def replace_url(match):
@@ -178,6 +276,7 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
         counter['url'] += 1
         var_name = f"url_{counter['url']}"
         variables[var_name] = url
+        slots_schema[var_name] = {"type": "string", "description": "URL ссылки"}
         return f'{match.group(1)}{{{{ {var_name} }}}}{match.group(3)}'
     
     def replace_img(match):
@@ -188,9 +287,8 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
         counter['img'] += 1
         var_name = f"image_{counter['img']}"
         variables[var_name] = src
+        slots_schema[var_name] = {"type": "string", "description": "URL изображения"}
         return f'{match.group(1)}{{{{ {var_name} }}}}{match.group(3)}'
-    
-    result = html
     
     # Заменяем <img src="...">
     result = re.sub(r'(<img[^>]+src=["\'])([^"\']+)(["\'][^>]*>)', replace_img, result)
@@ -198,11 +296,10 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
     # Заменяем <a href="...">
     result = re.sub(r'(<a[^>]+href=["\'])([^"\']+)(["\'][^>]*>)', replace_url, result)
     
-    # Заменяем текст внутри тегов (но НЕ атрибуты style/class)
-    # Паттерн: >текст< (между закрывающей и открывающей скобками)
+    # Заменяем текст внутри тегов
     result = re.sub(r'>([^<>{}&]+)<', replace_text, result)
     
-    return result, variables
+    return result, {"variables": variables, "slots_schema": slots_schema}
 
 def convert_to_template_ai(html: str, api_key: str) -> str:
     """

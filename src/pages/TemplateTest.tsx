@@ -52,6 +52,8 @@ const DEMO_HTML = `<!DOCTYPE html>
 const TemplateTest = () => {
   const [originalHTML, setOriginalHTML] = useState('');
   const [convertedHTML, setConvertedHTML] = useState('');
+  const [variables, setVariables] = useState<Record<string, any>>({});
+  const [slotsSchema, setSlotsSchema] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
   const [useAI, setUseAI] = useState(false);
@@ -103,7 +105,9 @@ const TemplateTest = () => {
         throw new Error(data.error);
       }
       
-      setConvertedHTML(data.template_content || '');
+      setConvertedHTML(data.template || data.template_content || '');
+      setVariables(data.variables || {});
+      setSlotsSchema(data.slots_schema || {});
     } catch (error: any) {
       alert(`Ошибка преобразования: ${error.message}\n\nВозможно файл слишком большой (>20KB). Попробуйте меньший файл.`);
       console.error('Conversion error:', error);
@@ -220,6 +224,53 @@ const TemplateTest = () => {
                       />
                     </div>
                   </div>
+
+                  {Object.keys(variables).length > 0 && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="bg-gray-100 px-4 py-2 border-b border-gray-200">
+                        <span className="text-sm font-medium text-gray-600">📋 Переменные ({Object.keys(variables).length})</span>
+                      </div>
+                      <div className="p-4 overflow-auto max-h-[300px]">
+                        <table className="w-full text-sm">
+                          <thead className="border-b">
+                            <tr className="text-left">
+                              <th className="pb-2 font-semibold">Имя</th>
+                              <th className="pb-2 font-semibold">Значение</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(variables).map(([key, value]) => (
+                              <tr key={key} className="border-b last:border-0">
+                                <td className="py-2 font-mono text-purple-600">{`{{ ${key} }}`}</td>
+                                <td className="py-2 text-gray-700">
+                                  {typeof value === 'object' ? (
+                                    <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                      {Array.isArray(value) ? `Массив (${value.length})` : 'Объект'}
+                                    </span>
+                                  ) : (
+                                    <span className="truncate block max-w-xs">{String(value)}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {Object.keys(slotsSchema).length > 0 && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="bg-gray-100 px-4 py-2 border-b border-gray-200">
+                        <span className="text-sm font-medium text-gray-600">🗂️ Slots Schema</span>
+                      </div>
+                      <div className="p-4">
+                        <pre className="text-xs font-mono bg-gray-50 p-3 rounded overflow-auto">
+                          {JSON.stringify(slotsSchema, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center text-gray-400">
