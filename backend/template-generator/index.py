@@ -152,7 +152,7 @@ HTML:
                 'Content-Type': 'application/json'
             },
             json={
-                'model': 'openai/gpt-4o',
+                'model': 'openai/gpt-4o-mini',
                 'messages': [{'role': 'user', 'content': prompt}],
                 'max_tokens': 16000,
                 'temperature': 0.3
