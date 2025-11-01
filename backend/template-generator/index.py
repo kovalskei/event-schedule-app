@@ -238,13 +238,17 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
         # Создаём Mustache цикл
         loop_html = f'{{{{#{loop_name}}}}}\n{item_template}\n{{{{/{loop_name}}}}}'
         
-        # Заменяем все экземпляры на цикл
-        for instance in instances:
-            result = result.replace(instance, '', 1)
+        # Находим первое вхождение ДО замены
+        first_occurrence = instances[0]
+        if first_occurrence not in result:
+            continue
         
-        # Вставляем цикл на место первого вхождения
-        first_pos = html.find(instances[0])
-        result = result[:first_pos] + loop_html + result[first_pos:]
+        # Заменяем первое вхождение на цикл
+        result = result.replace(first_occurrence, loop_html, 1)
+        
+        # Удаляем остальные экземпляры
+        for instance in instances[1:]:
+            result = result.replace(instance, '', 1)
         
         # Добавляем schema для цикла
         slots_schema[loop_name] = {
