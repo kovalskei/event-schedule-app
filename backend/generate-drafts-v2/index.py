@@ -221,18 +221,21 @@ CTA ссылка будет подставлена автоматически: {
                 conn2 = psycopg2.connect(db_url)
                 cur2 = conn2.cursor()
                 cur2.execute(
-                    "SELECT email_template_examples FROM t_p22819116_event_schedule_app.events WHERE id = " + str(event_id)
+                    "SELECT html_template FROM t_p22819116_event_schedule_app.email_templates " +
+                    "WHERE event_id = " + str(event_id) + 
+                    " AND content_type_id = " + str(content_type_id) +
+                    " AND is_example = TRUE LIMIT 1"
                 )
-                template_examples_row = cur2.fetchone()
+                template_example_row = cur2.fetchone()
                 cur2.close()
                 conn2.close()
                 
-                if template_examples_row and template_examples_row[0]:
-                    validation_prompt = f"""Проверь сгенерированное письмо на соответствие стилю примеров.
+                if template_example_row and template_example_row[0]:
+                    validation_prompt = f"""Проверь сгенерированное письмо на соответствие стилю эталонного шаблона.
 
-ПРИМЕРЫ: {template_examples_row[0]}
+ЭТАЛОННЫЙ ШАБЛОН (оригинал): {template_example_row[0]}
 
-СГЕНЕРИРОВАНО: {filled_html}
+СГЕНЕРИРОВАННОЕ ПИСЬМО: {filled_html}
 
 Оцени по 7 критериям (colors, typography, structure, spacing, cta_buttons, responsive, branding) от 0 до 10.
 Верни JSON: {{"overall_score": 8.5, "issues": [...], "suggestions": [...], "passed": true}}"""
