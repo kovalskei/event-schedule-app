@@ -112,19 +112,44 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         program_doc_url, pain_doc_url = result
         
         cur.execute(
-            "SELECT COUNT(*) FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
+            "SELECT COUNT(*), MAX(created_at) FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
         )
-        existing_count = cur.fetchone()[0]
+        result_check = cur.fetchone()
+        existing_count = result_check[0]
+        last_indexed_at = result_check[1]
+        
+        should_reindex = False
         
         if existing_count > 0:
-            print(f"[INFO] Event {event_id} already has {existing_count} indexed items, skipping re-indexing")
-            cur.close()
-            conn.close()
-            return {
-                'statusCode': 200,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'message': f'Event already indexed with {existing_count} items', 'indexed_count': existing_count, 'skipped': True})
-            }
+            program_modified = get_doc_modified_time(program_doc_url) if program_doc_url else ''
+            pain_modified = get_doc_modified_time(pain_doc_url) if pain_doc_url else ''
+            
+            if program_modified or pain_modified:
+                if last_indexed_at:
+                    last_indexed_str = last_indexed_at.isoformat()
+                    
+                    if (program_modified and program_modified > last_indexed_str) or (pain_modified and pain_modified > last_indexed_str):
+                        should_reindex = True
+                        print(f"[INFO] Documents modified after last indexing, will re-index")
+                        cur.execute(
+                            "DELETE FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
+                        )
+                        conn.commit()
+                    else:
+                        print(f"[INFO] Documents not modified since last indexing ({last_indexed_str}), skipping")
+                else:
+                    should_reindex = True
+            else:
+                print(f"[WARNING] Could not check document modification time, assuming no changes")
+            
+            if not should_reindex:
+                cur.close()
+                conn.close()
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'message': f'Event already indexed with {existing_count} items, no changes detected', 'indexed_count': existing_count, 'skipped': True})
+                }
         
         indexed_count = 0
         all_texts = []
@@ -277,6 +302,38 @@ def extract_style_snippets(html_templates: List[str]) -> List[str]:
                 snippets.append(intro)
     
     return snippets[:15]
+
+def get_doc_modified_time(url: str) -> str:
+    """Получает время последнего изменения документа из Google Drive API"""
+    try:
+        doc_id = ''
+        
+        if '/document/d/' in url:
+            doc_id = url.split('/document/d/')[1].split('/')[0]
+        elif '/spreadsheets/d/' in url:
+            doc_id = url.split('/spreadsheets/d/')[1].split('/')[0]
+        else:
+            return ''
+        
+        if not doc_id:
+            return ''
+        
+        api_url = f'https://www.googleapis.com/drive/v3/files/{doc_id}?fields=modifiedTime&key='
+        
+        gemini_key = os.environ.get('GEMINI_API_KEY', '')
+        if gemini_key:
+            api_url += gemini_key
+        else:
+            return ''
+        
+        req = urllib.request.Request(api_url)
+        
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            return data.get('modifiedTime', '')
+    except Exception as e:
+        print(f'[WARNING] Failed to get modifiedTime: {str(e)[:100]}')
+        return ''
 
 def read_google_doc(url: str) -> str:
     """Читает Google Docs или Sheets"""
