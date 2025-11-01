@@ -16,8 +16,8 @@
       "name": "Generate draft successfully",
       "method": "POST",
       "body": {
-        "event_id": 2,
-        "content_type_id": 9,
+        "event_id": 1,
+        "content_type_id": 1,
         "theme": "Адаптация и мотивация сотрудников"
       },
       "expectedStatus": 200,
