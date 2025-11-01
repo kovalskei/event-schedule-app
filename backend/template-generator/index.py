@@ -6,6 +6,7 @@ import psycopg2
 import requests
 from html.parser import HTMLParser
 from difflib import SequenceMatcher
+import base64
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -34,12 +35,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         body_data = json.loads(body_str)
         
         html_content = body_data.get('html_content')
+        screenshot_base64 = body_data.get('screenshot')  # NEW: скриншот блока
         event_id = body_data.get('event_id')
         content_type_id = body_data.get('content_type_id')
         template_name = body_data.get('name', 'Шаблон')
         test_mode = body_data.get('test_mode', False)
         use_ai = body_data.get('use_ai', False)  # Legacy AI (полная генерация)
         hybrid_ai = body_data.get('hybrid_ai', False)  # Гибрид: AI анализ + regex замена
+        vision_ai = body_data.get('vision_ai', False)  # NEW: Vision AI режим
         
         print(f"[INFO] Processing HTML: {len(html_content) if html_content else 0} chars")
         
@@ -66,7 +69,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             }
         
         try:
-            if hybrid_ai:
+            if vision_ai:
+                # Vision AI-режим: анализ скриншота + HTML
+                openai_key = os.environ.get('OPENAI_API_KEY', '')
+                if not openai_key:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENAI_API_KEY not configured for vision mode'})
+                    }
+                if not screenshot_base64:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'screenshot required for vision_ai mode'})
+                    }
+                print("[INFO] Using vision AI mode: analyzing screenshot + HTML")
+                instructions = analyze_with_vision(html_content, screenshot_base64, openai_key)
+                print(f"[INFO] Vision AI found {len(instructions.get('loops', []))} loops, {len(instructions.get('variables', []))} variables")
+                html_with_slots, result_data = apply_ai_instructions(html_content, instructions)
+            elif hybrid_ai:
                 # Гибридный AI-режим: AI только анализирует, regex применяет
                 openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
                 if not openrouter_key:
@@ -461,6 +483,105 @@ def apply_ai_instructions(html: str, instructions: Dict[str, Any]) -> Tuple[str,
             }
     
     return result, {"variables": variables, "slots_schema": slots_schema}
+
+def analyze_with_vision(html: str, screenshot_base64: str, openai_key: str) -> Dict[str, Any]:
+    """
+    Vision AI: анализирует скриншот + HTML через GPT-4 Vision
+    Возвращает инструкцию для regex замены
+    """
+    
+    # Извлекаем текст из HTML для контекста
+    text_content = re.sub(r'<[^>]+>', ' ', html)
+    text_content = re.sub(r'\s+', ' ', text_content).strip()[:2000]
+    
+    print(f"[INFO] Analyzing with Vision AI: {len(html)} chars HTML, screenshot provided")
+    
+    prompt = f"""You are analyzing a screenshot of HTML block that user wants to convert to a template with loops.
+
+USER TASK: Find repeating blocks in this screenshot and create loop instructions.
+
+HTML text content (for reference):
+{text_content}
+
+YOUR INSTRUCTIONS:
+1. Look at the screenshot - identify visually repeating blocks (3+ similar items)
+2. Find EXACT TEXT that appears BEFORE first repeating item and AFTER last item (markers)
+3. Extract field examples from repeating blocks (numbers, text, etc.)
+
+CRITICAL RULES:
+- start_marker and end_marker MUST be EXACT VISIBLE TEXT from screenshot/HTML
+- Do NOT use class names or technical markers
+- Copy-paste examples EXACTLY as they appear
+- Look for: numbers (73%, 52%, 2.5x), names, descriptions
+
+Return ONLY JSON in this format:
+{{
+  "loops": [{{
+    "start_marker": "Text right before first repeating block",
+    "end_marker": "Text right after last repeating block",
+    "variable_name": "items",
+    "fields": [
+      {{"name": "value", "example": "73%"}},
+      {{"name": "description", "example": "companies using AI"}}
+    ]
+  }}],
+  "variables": []
+}}
+
+Return ONLY valid JSON, no explanations."""
+    
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {openai_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # Убираем data:image prefix если есть
+    if screenshot_base64.startswith('data:image'):
+        screenshot_base64 = screenshot_base64.split(',')[1]
+    
+    payload = {
+        "model": "gpt-4o",
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{screenshot_base64}",
+                            "detail": "high"
+                        }
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 2000,
+        "temperature": 0.3
+    }
+    
+    print(f"[INFO] Sending request to OpenAI Vision API...")
+    response = requests.post(url, headers=headers, json=payload, timeout=60)
+    
+    if response.status_code != 200:
+        print(f"[ERROR] OpenAI Vision API error: {response.status_code} {response.text}")
+        return {"loops": [], "variables": []}
+    
+    result = response.json()
+    ai_response = result['choices'][0]['message']['content']
+    print(f"[INFO] Vision AI response: {ai_response[:500]}")
+    
+    # Парсим JSON из ответа
+    json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
+    if not json_match:
+        print(f"[ERROR] No JSON found in Vision AI response")
+        return {"loops": [], "variables": []}
+    
+    instructions = json.loads(json_match.group(0))
+    print(f"[INFO] Vision AI parsed: {len(instructions.get('loops', []))} loops")
+    
+    return instructions
 
 def analyze_template_with_ai(html: str, api_key: str) -> Dict[str, Any]:
     """
