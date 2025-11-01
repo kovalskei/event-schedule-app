@@ -8,6 +8,35 @@ import urllib.parse
 import csv
 from io import StringIO
 
+def split_by_numbered_paragraphs(text: str) -> List[str]:
+    """Разбивает текст на параграфы по нумерации (84., 85., 86. и т.д.)"""
+    pattern = r'^\s*(\d+)\.\s+'
+    
+    paragraphs = []
+    current_paragraph = []
+    current_number = None
+    
+    for line in text.split('\n'):
+        match = re.match(pattern, line)
+        
+        if match:
+            if current_paragraph:
+                paragraphs.append('\n'.join(current_paragraph).strip())
+            
+            current_number = match.group(1)
+            current_paragraph = [line]
+        else:
+            if current_paragraph:
+                current_paragraph.append(line)
+    
+    if current_paragraph:
+        paragraphs.append('\n'.join(current_paragraph).strip())
+    
+    paragraphs = [p for p in paragraphs if len(p) >= 20]
+    
+    print(f"[INFO] Split text into {len(paragraphs)} numbered paragraphs")
+    return paragraphs
+
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
     Business: Индексирует знания мероприятия из Google Docs в knowledge_store с эмбеддингами для RAG
@@ -113,8 +142,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if pain_doc_url:
             pain_text = read_google_doc(pain_doc_url)
             if pain_text:
-                paragraphs = [p.strip() for p in pain_text.split('\n\n') if p.strip()]
-                max_pain_items = 10
+                paragraphs = split_by_numbered_paragraphs(pain_text)
+                max_pain_items = 40
                 processed_pain = 0
                 
                 for para in paragraphs:
@@ -126,7 +155,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     all_metadata.append({'event_id': event_id, 'item_type': 'pain_point', 'content': para})
                     processed_pain += 1
                 
-                print(f"[INFO] Collected {processed_pain} pain points")
+                print(f"[INFO] Collected {processed_pain} pain points (numbered paragraphs)")
         
         cur.execute(
             "SELECT html_layout FROM t_p22819116_event_schedule_app.email_templates WHERE event_id = " + str(event_id) + " LIMIT 10"
