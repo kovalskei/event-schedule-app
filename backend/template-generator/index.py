@@ -181,23 +181,58 @@ def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
     
     repeating = []
     
-    # Ищем последовательные div с одинаковой структурой
+    # ПРИОРИТЕТ: Ищем div с числами/процентами (статистика)
+    div_pattern_with_numbers = r'<div[^>]*>[^<]*?(\d+%|\d+\.\d+x)[^<]*?</div>'
+    number_divs = re.findall(r'(<div[^>]*>[^<]*?(?:\d+%|\d+\.\d+x)[^<]*?</div>)', html, re.DOTALL)
+    
+    print(f"[DEBUG] Found {len(number_divs)} divs with numbers/percentages")
+    
+    if len(number_divs) >= 3:
+        # Группируем блоки со статистикой
+        number_groups = []
+        for div_html in number_divs:
+            # Нормализуем числа для сравнения структуры
+            normalized = re.sub(r'\d+%', 'NUM%', div_html)
+            normalized = re.sub(r'\d+\.\d+x', 'NUMx', normalized)
+            normalized = re.sub(r'>\s*[^<]*\s*<', '><', normalized)
+            
+            matched = False
+            for group in number_groups:
+                group_norm = re.sub(r'\d+%', 'NUM%', group[0])
+                group_norm = re.sub(r'\d+\.\d+x', 'NUMx', group_norm)
+                group_norm = re.sub(r'>\s*[^<]*\s*<', '><', group_norm)
+                
+                similarity = SequenceMatcher(None, normalized, group_norm).ratio()
+                if similarity > 0.7:
+                    group.append(div_html)
+                    matched = True
+                    break
+            
+            if not matched:
+                number_groups.append([div_html])
+        
+        # Приоритет: статистика с 3+ элементами
+        for group in number_groups:
+            if len(group) >= 3:
+                print(f"[DEBUG] Found PRIORITY stats group with {len(group)} items")
+                repeating.append((group[0], group))
+                return repeating  # Возвращаем сразу!
+    
+    # Fallback: Ищем обычные div
     div_pattern = r'<div([^>]*)>((?:(?!<div[^>]*>|</div>).)*)</div>'
     all_divs = list(re.finditer(div_pattern, html, re.DOTALL))
     
-    # Группируем последовательные div с похожей структурой
     if len(all_divs) >= 2:
         groups = []
         for match in all_divs:
             div_html = match.group(0)
-            # Извлекаем структуру без текста
             structure = re.sub(r'>([^<]+)<', '><', div_html)
             
             matched = False
             for group in groups:
                 group_structure = re.sub(r'>([^<]+)<', '><', group[0])
                 similarity = SequenceMatcher(None, structure, group_structure).ratio()
-                if similarity > 0.8:  # Более строгое сходство
+                if similarity > 0.85:
                     group.append(div_html)
                     matched = True
                     break
@@ -205,7 +240,6 @@ def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
             if not matched:
                 groups.append([div_html])
         
-        # Берём только группы с 3+ элементами (более уверенное распознавание)
         for group in groups:
             if len(group) >= 3:
                 repeating.append((group[0], group))
