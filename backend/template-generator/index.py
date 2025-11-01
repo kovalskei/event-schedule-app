@@ -43,6 +43,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         use_ai = body_data.get('use_ai', False)  # Legacy AI (полная генерация)
         hybrid_ai = body_data.get('hybrid_ai', False)  # Гибрид: AI анализ + regex замена
         vision_ai = body_data.get('vision_ai', False)  # NEW: Vision AI режим
+        fields_schema = body_data.get('fields_schema', None)  # NEW: Схема полей из settings
         
         print(f"[INFO] Processing HTML: {len(html_content) if html_content else 0} chars")
         
@@ -116,7 +117,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             else:
                 # Pure regex-режим: мгновенно, сохраняет все стили
                 print("[INFO] Using pure regex mode")
-                html_with_slots, result_data = convert_to_template_regex(html_content)
+                html_with_slots, result_data = convert_to_template_regex(html_content, fields_schema)
                 print(f"[INFO] Regex conversion: found {len(result_data.get('variables', {}))} variables")
                 print(f"[INFO] Regex conversion: found {len(result_data.get('slots_schema', {}))} schema fields")
             
@@ -243,6 +244,60 @@ def extract_fields_from_block(block: str) -> Dict[str, str]:
     return fields
 
 
+def extract_fields_by_names(block: str, field_names: List[str]) -> Dict[str, str]:
+    """
+    Извлекает поля из HTML блока по заданным именам (из schema)
+    Пытается найти значения для: name, title, description, photo_url, link_url и т.д.
+    """
+    fields = {}
+    
+    # 1. photo_url — ищем первый <img src="">
+    if 'photo_url' in field_names or 'image' in field_names or 'img' in field_names:
+        img_match = re.search(r'<img[^>]*src=["\']([^"\']+)["\']', block, re.IGNORECASE)
+        if img_match:
+            for fname in ['photo_url', 'image', 'img']:
+                if fname in field_names:
+                    fields[fname] = img_match.group(1)
+                    break
+    
+    # 2. link_url — ищем первый <a href="">
+    if 'link_url' in field_names or 'url' in field_names or 'link' in field_names:
+        link_match = re.search(r'<a[^>]*href=["\']([^"\']+)["\']', block, re.IGNORECASE)
+        if link_match:
+            for fname in ['link_url', 'url', 'link']:
+                if fname in field_names:
+                    fields[fname] = link_match.group(1)
+                    break
+    
+    # 3. Текстовые поля: name, title, description
+    text_fields = [f for f in field_names if f in ['name', 'title', 'description', 'subtitle', 'text']]
+    
+    # Извлекаем все текстовые блоки (>3 символа, не HTML)
+    text_blocks = re.findall(r'>([^<>{}&]{3,})<', block)
+    text_blocks = [t.strip() for t in text_blocks if t.strip()]
+    
+    # Распределяем по полям (name → короткий, description → длинный)
+    for fname in text_fields:
+        if fname == 'name' and text_blocks:
+            # name — обычно короткий (первый или самый короткий)
+            shortest = min(text_blocks, key=len)
+            if len(shortest) < 50:  # name обычно короткий
+                fields[fname] = shortest
+                text_blocks.remove(shortest)
+        elif fname == 'title' and text_blocks:
+            # title — средний по длине
+            if text_blocks:
+                fields[fname] = text_blocks.pop(0)
+        elif fname == 'description' and text_blocks:
+            # description — самый длинный оставшийся
+            if text_blocks:
+                longest = max(text_blocks, key=len)
+                fields[fname] = longest
+                text_blocks.remove(longest)
+    
+    return fields
+
+
 def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
     """
     Находит повторяющиеся блоки HTML (например, карточки спикеров)
@@ -352,14 +407,26 @@ def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
     
     return repeating
 
-def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
+def convert_to_template_regex(html: str, fields_schema: Dict[str, Any] = None) -> Tuple[str, Dict[str, Any]]:
     """
     Быстрая замена через regex (без AI) — работает за миллисекунды
     Возвращает: (преобразованный HTML, словарь с переменными и slots_schema)
+    
+    fields_schema format:
+    {
+        "speakers": {
+            "type": "array",
+            "fields": ["name", "title", "description", "photo_url"]
+        }
+    }
     """
     variables = {}
     slots_schema = {}
     counter = {'text': 0, 'url': 0, 'img': 0, 'loop': 0}
+    
+    print(f"[INFO] Fields schema provided: {fields_schema is not None}")
+    if fields_schema:
+        print(f"[INFO] Schema keys: {list(fields_schema.keys())}")
     
     # Шаг 1: Найти повторяющиеся блоки
     repeating_blocks = find_repeating_blocks(html)
@@ -387,7 +454,15 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
         
         # Извлекаем переменные из первого экземпляра
         item_template = template_block
-        item_vars = extract_fields_from_block(template_block)
+        
+        # Если есть schema для этого цикла — используем её
+        if fields_schema and loop_name in fields_schema:
+            schema_fields = fields_schema[loop_name].get('fields', [])
+            print(f"[INFO] Using predefined schema for '{loop_name}': {schema_fields}")
+            item_vars = extract_fields_by_names(template_block, schema_fields)
+        else:
+            # Иначе — авто-определяем поля
+            item_vars = extract_fields_from_block(template_block)
         
         print(f"[INFO] Loop '{loop_name}': extracted {len(item_vars)} fields: {list(item_vars.keys())}")
         
