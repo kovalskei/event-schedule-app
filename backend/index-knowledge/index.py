@@ -121,26 +121,46 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         should_reindex = False
         
         if existing_count > 0:
-            program_modified = get_doc_modified_time(program_doc_url) if program_doc_url else ''
-            pain_modified = get_doc_modified_time(pain_doc_url) if pain_doc_url else ''
+            pain_text_preview = read_google_doc(pain_doc_url) if pain_doc_url else ''
+            actual_paragraphs_count = 0
             
-            if program_modified or pain_modified:
-                if last_indexed_at:
-                    last_indexed_str = last_indexed_at.isoformat()
-                    
-                    if (program_modified and program_modified > last_indexed_str) or (pain_modified and pain_modified > last_indexed_str):
-                        should_reindex = True
-                        print(f"[INFO] Documents modified after last indexing, will re-index")
-                        cur.execute(
-                            "DELETE FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
-                        )
-                        conn.commit()
-                    else:
-                        print(f"[INFO] Documents not modified since last indexing ({last_indexed_str}), skipping")
-                else:
-                    should_reindex = True
+            if pain_text_preview:
+                actual_paragraphs = split_by_numbered_paragraphs(pain_text_preview)
+                actual_paragraphs_count = len(actual_paragraphs)
+            
+            cur.execute(
+                "SELECT COUNT(*) FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id) + " AND item_type = 'pain_point'"
+            )
+            indexed_pain_count = cur.fetchone()[0]
+            
+            if actual_paragraphs_count > indexed_pain_count:
+                should_reindex = True
+                print(f"[INFO] Document has {actual_paragraphs_count} paragraphs but only {indexed_pain_count} indexed, will re-index")
+                cur.execute(
+                    "DELETE FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
+                )
+                conn.commit()
             else:
-                print(f"[WARNING] Could not check document modification time, assuming no changes")
+                program_modified = get_doc_modified_time(program_doc_url) if program_doc_url else ''
+                pain_modified = get_doc_modified_time(pain_doc_url) if pain_doc_url else ''
+                
+                if program_modified or pain_modified:
+                    if last_indexed_at:
+                        last_indexed_str = last_indexed_at.isoformat()
+                        
+                        if (program_modified and program_modified > last_indexed_str) or (pain_modified and pain_modified > last_indexed_str):
+                            should_reindex = True
+                            print(f"[INFO] Documents modified after last indexing, will re-index")
+                            cur.execute(
+                                "DELETE FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
+                            )
+                            conn.commit()
+                        else:
+                            print(f"[INFO] Documents not modified since last indexing ({last_indexed_str}), skipping")
+                    else:
+                        should_reindex = True
+                else:
+                    print(f"[WARNING] Could not check document modification time, assuming no changes")
             
             if not should_reindex:
                 cur.close()
