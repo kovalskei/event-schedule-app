@@ -339,6 +339,11 @@ export default function EventsManager() {
             <div className="flex flex-col sm:flex-row gap-4 sm:justify-between sm:items-center">
               <h2 className="text-2xl font-semibold">Мероприятия</h2>
               <div className="flex gap-2">
+                <Link to="/email-test">
+                  <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    🚀 Тест генерации писем
+                  </button>
+                </Link>
                 <Link to="/template-test">
                   <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
                     🧪 Тест шаблонов
