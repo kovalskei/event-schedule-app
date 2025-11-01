@@ -152,12 +152,12 @@ HTML:
                 'Content-Type': 'application/json'
             },
             json={
-                'model': 'anthropic/claude-3.5-sonnet',
+                'model': 'openai/gpt-4o',
                 'messages': [{'role': 'user', 'content': prompt}],
                 'max_tokens': 16000,
                 'temperature': 0.3
             },
-            timeout=120
+            timeout=60
         )
         
         if response.status_code != 200:
