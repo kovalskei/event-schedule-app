@@ -189,6 +189,60 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'body': json.dumps({'error': 'Method not allowed'})
     }
 
+def extract_fields_from_block(block: str) -> Dict[str, str]:
+    """
+    Извлекает поля из блока HTML (текст, ссылки, изображения).
+    Возвращает: {field_name: field_value}
+    
+    Логика из билда 894439ae — именованные поля!
+    """
+    fields = {}
+    
+    # 1. Извлекаем текстовое содержимое из ячеек таблицы <td>
+    td_pattern = r'<td[^>]*>(.*?)</td>'
+    td_matches = re.findall(td_pattern, block, re.DOTALL | re.IGNORECASE)
+    
+    for i, td_content in enumerate(td_matches):
+        # Убираем HTML теги, оставляем только текст
+        text = re.sub(r'<[^>]+>', '', td_content).strip()
+        
+        if text and len(text) > 2:  # Игнорируем короткие/пустые
+            # Определяем тип поля по позиции
+            if i == 0:
+                fields['name'] = text
+            elif i == 1:
+                fields['title'] = text
+            elif i == 2:
+                fields['description'] = text
+            else:
+                fields[f'field_{i}'] = text
+    
+    # 2. Если нет <td>, ищем текст в <div>
+    if not fields:
+        div_texts = re.findall(r'>([^<>{}&]{3,})<', block)
+        for i, text in enumerate(div_texts):
+            text = text.strip()
+            if text:
+                if i == 0:
+                    fields['title'] = text
+                elif i == 1:
+                    fields['description'] = text
+                else:
+                    fields[f'text_{i}'] = text
+    
+    # 3. Извлекаем URL изображения
+    img_match = re.search(r'<img[^>]*src=["\']([^"\']+)["\']', block, re.IGNORECASE)
+    if img_match:
+        fields['photo_url'] = img_match.group(1)
+    
+    # 4. Извлекаем ссылки
+    link_match = re.search(r'<a[^>]*href=["\']([^"\']+)["\']', block, re.IGNORECASE)
+    if link_match:
+        fields['link_url'] = link_match.group(1)
+    
+    return fields
+
+
 def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
     """
     Находит повторяющиеся блоки HTML (например, карточки спикеров)
@@ -313,25 +367,28 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
             continue
         
         counter['loop'] += 1
-        loop_name = f"items_{counter['loop']}"
+        
+        # Определяем имя цикла по контенту
+        if '<!-- Спикер' in template_block or 'спикер' in template_block.lower():
+            loop_name = 'speakers'
+        elif 'speaker' in template_block.lower():
+            loop_name = 'speakers'
+        else:
+            loop_name = f"items_{counter['loop']}"
         
         # Извлекаем переменные из первого экземпляра
         item_template = template_block
-        item_vars = {}
-        item_counter = 1
+        item_vars = extract_fields_from_block(template_block)
         
-        # Заменяем текст на переменные
-        def replace_item_text(match):
-            nonlocal item_counter
-            text = match.group(1).strip()
-            if not text or len(text) < 3:
-                return match.group(0)
-            var_name = f"field_{item_counter}"
-            item_vars[var_name] = text
-            item_counter += 1
-            return f'>{{{{ {var_name} }}}}<'
+        print(f"[INFO] Loop '{loop_name}': extracted {len(item_vars)} fields: {list(item_vars.keys())}")
         
-        item_template = re.sub(r'>([^<>{}&]+)<', replace_item_text, item_template)
+        # Заменяем значения полей на переменные Mustache
+        for field_name, field_value in item_vars.items():
+            if field_value and len(str(field_value)) > 0:
+                # Экранируем спецсимволы для regex
+                escaped_value = re.escape(str(field_value))
+                item_template = re.sub(escaped_value, f'{{{{ {field_name} }}}}', item_template, count=1)
+                print(f"[DEBUG] Replaced '{field_value[:30]}...' → {{{{ {field_name} }}}}")
         
         # Создаём Mustache цикл
         loop_html = f'{{{{#{loop_name}}}}}\n{item_template}\n{{{{/{loop_name}}}}}'
