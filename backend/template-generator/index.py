@@ -445,21 +445,32 @@ def analyze_template_with_ai(html: str, api_key: str) -> Dict[str, Any]:
 HTML:
 {html[:3000]}
 
+CRITICAL RULES:
+1. start_marker and end_marker MUST be ACTUAL TEXT from HTML, NOT class names or tag names
+2. Look for VISIBLE TEXT that appears BEFORE and AFTER repeating blocks
+3. For repeating blocks (3+ similar items), find the text that comes right before first item and right after last item
+4. "example" in fields MUST be EXACT text from HTML (copy-paste it)
+
+Example GOOD markers:
+- start_marker: "Ключевые показатели" (actual heading text)
+- end_marker: "Почему это важно" (text after stats section)
+- example: "73%" (exact number from HTML)
+
+Example BAD markers (NEVER do this):
+- start_marker: "stats-block h3" (class name - WRONG!)
+- end_marker: "/div" (tag - WRONG!)
+
 Return JSON:
 {{
   "loops": [
-    {{"start_marker": "unique text before loop", "end_marker": "unique text after loop", "variable_name": "stats_items", "fields": [{{"name": "number", "example": "73%"}}, {{"name": "text", "example": "компаний..."}}]}}
+    {{"start_marker": "actual text before loop", "end_marker": "actual text after loop", "variable_name": "stats_items", "fields": [{{"name": "percentage", "example": "73%"}}, {{"name": "description", "example": "компаний уже внедрили AI-инструменты"}}]}}
   ],
   "variables": [
-    {{"unique_text": "Ключевые показатели индустрии", "variable_name": "main_heading", "type": "text"}}
+    {{"unique_text": "Революция в HR", "variable_name": "main_heading", "type": "text"}}
   ]
 }}
 
-Rules:
-1. Find repeating blocks (3+ similar elements)
-2. Identify unique text markers around loops
-3. Mark standalone dynamic text/urls/images
-4. Return ONLY valid JSON, no explanations"""
+Return ONLY valid JSON, no explanations."""
 
     # Используем OpenRouter для доступа к Claude
     response = requests.post(
