@@ -1,18 +1,95 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+
+const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
+
+interface Event {
+  id: number;
+  name: string;
+  description: string;
+}
+
+interface ContentType {
+  id: number;
+  name: string;
+  description: string;
+}
 
 export default function EmailGeneratorTest() {
-  const [eventId, setEventId] = useState('1');
-  const [templateId, setTemplateId] = useState('138');
+  const { toast } = useToast();
+  const [events, setEvents] = useState<Event[]>([]);
+  const [templates, setTemplates] = useState<ContentType[]>([]);
+  const [eventId, setEventId] = useState('');
+  const [templateId, setTemplateId] = useState('');
   const [theme, setTheme] = useState('Анонс спикеров по адаптации и мотивации сотрудников');
   const [loading, setLoading] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  useEffect(() => {
+    if (eventId) {
+      loadTemplates(parseInt(eventId));
+    }
+  }, [eventId]);
+
+  const loadEvents = async () => {
+    setLoadingData(true);
+    try {
+      const res = await fetch(`${EVENTS_MANAGER_URL}?action=list_events`);
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setEvents(data.events || []);
+      if (data.events?.length > 0) {
+        setEventId(data.events[0].id.toString());
+      }
+    } catch (err) {
+      toast({
+        title: 'Ошибка загрузки',
+        description: err instanceof Error ? err.message : 'Не удалось загрузить мероприятия',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  const loadTemplates = async (eventIdNum: number) => {
+    try {
+      const res = await fetch(`${EVENTS_MANAGER_URL}?action=get_event&event_id=${eventIdNum}`);
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setTemplates(data.content_types || []);
+      if (data.content_types?.length > 0) {
+        setTemplateId(data.content_types[0].id.toString());
+      }
+    } catch (err) {
+      toast({
+        title: 'Ошибка загрузки',
+        description: err instanceof Error ? err.message : 'Не удалось загрузить шаблоны',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const generateEmail = async () => {
     setLoading(true);
@@ -64,23 +141,38 @@ export default function EmailGeneratorTest() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-2 block">Event ID</label>
-                <Input
-                  type="number"
-                  value={eventId}
-                  onChange={(e) => setEventId(e.target.value)}
-                  placeholder="1"
-                />
+                <label className="text-sm font-medium text-slate-700 mb-2 block">Мероприятие</label>
+                <Select value={eventId} onValueChange={setEventId} disabled={loadingData}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите мероприятие" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {events.map((event) => (
+                      <SelectItem key={event.id} value={event.id.toString()}>
+                        {event.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
-                <label className="text-sm font-medium text-slate-700 mb-2 block">Template ID</label>
-                <Input
-                  type="number"
-                  value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
-                  placeholder="138"
-                />
+                <label className="text-sm font-medium text-slate-700 mb-2 block">Шаблон письма</label>
+                <Select value={templateId} onValueChange={setTemplateId} disabled={!eventId || templates.length === 0}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите шаблон" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id.toString()}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {eventId && templates.length === 0 && (
+                  <p className="text-xs text-slate-500 mt-1">Для этого мероприятия пока нет шаблонов</p>
+                )}
               </div>
 
               <div>
@@ -95,7 +187,7 @@ export default function EmailGeneratorTest() {
 
               <Button
                 onClick={generateEmail}
-                disabled={loading}
+                disabled={loading || !eventId || !templateId}
                 className="w-full"
                 size="lg"
               >
