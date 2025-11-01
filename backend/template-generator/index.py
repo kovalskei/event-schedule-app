@@ -151,33 +151,20 @@ def convert_to_template_ai(html: str, api_key: str) -> str:
     4. Верни ТОЛЬКО HTML, без объяснений
     """
     
-    prompt = f"""You are converting an HTML email into a Mustache template. 
+    prompt = f"""Convert HTML email to Mustache template.
 
-CRITICAL RULES - FOLLOW EXACTLY:
+Rules:
+1. Keep ALL styles unchanged (linear-gradient, colors, padding, borders)
+2. Replace text content with {{{{variables}}}}
+3. Replace URLs with {{{{url_variables}}}}
+4. Return ONLY HTML, no explanations
 
-1. PRESERVE 100% OF STYLING:
-   - Keep ALL inline styles (style="...") character-by-character
-   - Keep ALL <style> blocks unchanged
-   - Keep ALL CSS: background, linear-gradient(), colors (#667eea), padding, margin, border-radius, box-shadow
-   - Keep ALL class names and CSS rules
-   - Keep ALL table attributes (width, cellpadding, bgcolor, align)
+Example:
+<h1 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Hello</h1>
+→
+<h1 style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">{{{{heading}}}}</h1>
 
-2. REPLACE ONLY CONTENT:
-   - Replace text content inside tags with {{{{variable_name}}}}
-   - Replace href URLs with {{{{url_variable}}}}
-   - Replace src URLs with {{{{image_url}}}}
-   - Use descriptive variable names: {{{{intro_heading}}}}, {{{{cta_text}}}}, {{{{cta_url}}}}
-
-3. OUTPUT FORMAT:
-   - Return ONLY the HTML code
-   - NO markdown blocks, NO ```html```, NO explanations
-   - Exact same structure as input
-
-EXAMPLE:
-Input:  <h1 style="color: #fff; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">Hello</h1>
-Output: <h1 style="color: #fff; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">{{{{heading}}}}</h1>
-
-HTML TO CONVERT:
+HTML:
 {html}"""
 
     try:
