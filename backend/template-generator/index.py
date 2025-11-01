@@ -1,16 +1,11 @@
 import json
 import os
 import re
-import base64
-import tempfile
 from typing import Dict, Any, Tuple, List
 import psycopg2
 import requests
 from html.parser import HTMLParser
 from difflib import SequenceMatcher
-from playwright.sync_api import sync_playwright
-from PIL import Image
-import io
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -433,27 +428,9 @@ def apply_ai_instructions(html: str, instructions: Dict[str, Any]) -> Tuple[str,
     
     return result, {"variables": variables, "slots_schema": slots_schema}
 
-def create_html_screenshot(html: str) -> str:
-    """
-    Создает скриншот HTML и возвращает base64
-    """
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(viewport={'width': 1200, 'height': 2000})
-        
-        # Рендерим HTML
-        page.set_content(html, wait_until='networkidle')
-        
-        # Делаем скриншот в память
-        screenshot_bytes = page.screenshot(full_page=True, type='png')
-        browser.close()
-        
-        # Конвертируем в base64
-        return base64.b64encode(screenshot_bytes).decode('utf-8')
-
 def analyze_template_with_ai(html: str, api_key: str) -> Dict[str, Any]:
     """
-    ИИ АНАЛИЗИРУЕТ СКРИНШОТ HTML и возвращает JSON-инструкцию для regex
+    ИИ АНАЛИЗИРУЕТ HTML и возвращает JSON-инструкцию для regex
     НЕ генерирует код, только маркирует что заменить
     
     Возвращает:
@@ -463,31 +440,35 @@ def analyze_template_with_ai(html: str, api_key: str) -> Dict[str, Any]:
     }
     """
     
-    # Создаем скриншот HTML
-    print("[INFO] Creating screenshot...")
-    screenshot_base64 = create_html_screenshot(html)
-    print(f"[INFO] Screenshot created: {len(screenshot_base64)} bytes")
-    
-    # Извлекаем текстовое содержимое для контекста
+    # Извлекаем текстовое содержимое для анализа
     text_content = re.sub(r'<[^>]+>', ' ', html)
     text_content = re.sub(r'\s+', ' ', text_content).strip()
     
-    prompt = f"""Look at this HTML template screenshot and return ONLY a JSON instruction for regex replacement.
+    # Считаем сколько раз встречаются числа (признак повторов)
+    numbers = re.findall(r'\d+%|\d+\.\d+x|\d+ [а-яА-Яa-zA-Z]+', text_content)
+    print(f"[DEBUG] Found {len(numbers)} numbers in text: {numbers[:5]}")
+    
+    prompt = f"""Analyze this HTML and return ONLY a JSON instruction for regex replacement. Do NOT generate code.
 
-Text content (for context):
-{text_content[:1500]}
+HTML (first 7000 chars):
+{html[:7000]}
 
-YOUR TASK: VISUALLY identify REPEATING PATTERNS (3+ similar blocks with same structure).
+Text content preview (look for repeating patterns):
+{text_content[:2000]}
+
+YOUR TASK: Find REPEATING PATTERNS (3+ similar blocks with same structure but different content).
+
+STEP 1: Look for repeating numbers/percentages in text above
+Examples: "73%", "52%", "2.5x" appearing multiple times = LOOP!
+
+STEP 2: Find ACTUAL TEXT that comes:
+- RIGHT BEFORE the first repeating item
+- RIGHT AFTER the last repeating item
 
 CRITICAL RULES:
-1. start_marker and end_marker MUST be ACTUAL TEXT from HTML visible on screenshot
-2. Look for VISIBLE TEXT that appears BEFORE first repeating block and AFTER last block
-3. "example" MUST be EXACT text you see on the screenshot
-
-LOOK FOR VISUAL PATTERNS:
-- See 3+ cards/blocks that look identical? → This is a LOOP
-- See percentage numbers repeating? → Loop with "percentage" field
-- See repeated icons/emojis? → Part of the loop structure
+1. start_marker and end_marker = ACTUAL VISIBLE TEXT, NOT class names
+2. "example" field = copy-paste EXACT text from HTML (don't change it!)
+3. Look for 3+ items with identical HTML structure
 
 Example GOOD JSON:
 {{
@@ -504,7 +485,7 @@ Example GOOD JSON:
 
 Return ONLY valid JSON, no explanations."""
 
-    # Используем OpenRouter с Vision API (Claude 3.5 Sonnet видит картинки)
+    # Используем OpenRouter для доступа к Claude
     response = requests.post(
         'https://openrouter.ai/api/v1/chat/completions',
         headers={
@@ -515,24 +496,10 @@ Return ONLY valid JSON, no explanations."""
         },
         json={
             'model': 'anthropic/claude-3.5-sonnet',
-            'messages': [{
-                'role': 'user', 
-                'content': [
-                    {
-                        'type': 'image_url',
-                        'image_url': {
-                            'url': f'data:image/png;base64,{screenshot_base64}'
-                        }
-                    },
-                    {
-                        'type': 'text',
-                        'text': prompt
-                    }
-                ]
-            }],
+            'messages': [{'role': 'user', 'content': prompt}],
             'max_tokens': 2000
         },
-        timeout=60
+        timeout=30
     )
     
     if response.status_code != 200:
