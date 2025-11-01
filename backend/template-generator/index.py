@@ -35,6 +35,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         event_id = body_data.get('event_id')
         content_type_id = body_data.get('content_type_id')
         template_name = body_data.get('name', 'Шаблон')
+        test_mode = body_data.get('test_mode', False)
         
         print(f"[INFO] Processing HTML: {len(html_content) if html_content else 0} chars")
         
@@ -45,7 +46,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'html_content required'})
             }
         
-        if not event_id or not content_type_id:
+        if not test_mode and (not event_id or not content_type_id):
             return {
                 'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
@@ -70,6 +71,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         try:
             html_with_slots = convert_to_template_ai(html_content, openrouter_key)
+            
+            if test_mode:
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({
+                        'template_content': html_with_slots,
+                        'original_length': len(html_content),
+                        'template_length': len(html_with_slots)
+                    })
+                }
             
             conn = psycopg2.connect(db_url)
             cur = conn.cursor()

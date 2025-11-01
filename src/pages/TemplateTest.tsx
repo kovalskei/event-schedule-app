@@ -63,7 +63,8 @@ const TemplateTest = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          html_content: testHTML
+          html_content: testHTML,
+          test_mode: true
         })
       });
 
