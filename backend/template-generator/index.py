@@ -192,7 +192,7 @@ HTML TO CONVERT:
                 'messages': [{'role': 'user', 'content': prompt}],
                 'max_completion_tokens': 16000
             },
-            timeout=90
+            timeout=110
         )
         
         if response.status_code != 200:

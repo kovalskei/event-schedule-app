@@ -104,7 +104,7 @@ const TemplateTest = () => {
       
       setConvertedHTML(data.template_content || '');
     } catch (error: any) {
-      alert(`Ошибка преобразования: ${error.message}\n\nВозможно файл слишком большой. Попробуйте меньший файл или подождите дольше (o1-mini работает до 60 секунд).`);
+      alert(`Ошибка преобразования: ${error.message}\n\nВозможно файл слишком большой. Попробуйте меньший файл или подождите (o1 работает до 2 минут).`);
       console.error('Conversion error:', error);
     } finally {
       setLoading(false);
@@ -144,12 +144,12 @@ const TemplateTest = () => {
             disabled={loading || !originalHTML}
             className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? '⏳ Преобразую (до 60 сек)...' : 'Преобразовать'}
+            {loading ? '⏳ Преобразую (до 2 мин)...' : 'Преобразовать'}
           </button>
           
           {loading && (
             <span className="text-sm text-gray-500">
-              O1-mini думает... Это может занять до минуты для больших файлов
+              O1 думает... Это может занять до 2 минут для больших файлов
             </span>
           )}
         </div>
