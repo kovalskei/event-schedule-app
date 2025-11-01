@@ -16,16 +16,18 @@ interface Event {
   description: string;
 }
 
-interface ContentType {
+interface EmailTemplate {
   id: number;
   name: string;
-  description: string;
+  content_type_name: string;
+  html_template: string;
+  subject_template: string;
 }
 
 export default function EmailGeneratorTest() {
   const { toast } = useToast();
   const [events, setEvents] = useState<Event[]>([]);
-  const [templates, setTemplates] = useState<ContentType[]>([]);
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [eventId, setEventId] = useState('');
   const [templateId, setTemplateId] = useState('');
   const [theme, setTheme] = useState('Анонс спикеров по адаптации и мотивации сотрудников');
@@ -78,9 +80,9 @@ export default function EmailGeneratorTest() {
         throw new Error(data.error);
       }
 
-      setTemplates(data.content_types || []);
-      if (data.content_types?.length > 0) {
-        setTemplateId(data.content_types[0].id.toString());
+      setTemplates(data.email_templates || []);
+      if (data.email_templates?.length > 0) {
+        setTemplateId(data.email_templates[0].id.toString());
       }
     } catch (err) {
       toast({
