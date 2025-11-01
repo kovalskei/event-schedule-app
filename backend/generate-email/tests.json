@@ -1,0 +1,43 @@
+{
+  "tests": [
+    {
+      "name": "Missing event_id",
+      "method": "POST",
+      "body": {
+        "template_id": 138
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "event_id required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Missing template_id",
+      "method": "POST",
+      "body": {
+        "event_id": 1
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "template_id required"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Generate email with theme",
+      "method": "POST",
+      "body": {
+        "event_id": 1,
+        "template_id": 138,
+        "theme": "Анонс спикеров по теме адаптация и мотивация",
+        "test_mode": true
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест генерации письма</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 20px auto; padding: 20px; }
+        .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .panel { border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+        h2 { margin-top: 0; }
+        input, textarea, button { width: 100%; padding: 10px; margin: 10px 0; }
+        textarea { min-height: 100px; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 10px 0; }
+        .error { background: #f8d7da; color: #721c24; }
+        .success { background: #d4edda; color: #155724; }
+        iframe { width: 100%; height: 600px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Тест генерации email</h1>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>Параметры</h2>
+            
+            <label>Event ID:</label>
+            <input type="number" id="eventId" value="1" />
+            
+            <label>Template ID:</label>
+            <input type="number" id="templateId" value="138" />
+            
+            <label>Тема письма:</label>
+            <textarea id="theme">Анонс спикеров по адаптации и мотивации сотрудников</textarea>
+            
+            <button onclick="generateEmail()">🚀 Генерировать письмо</button>
+            
+            <div id="status"></div>
+        </div>
+        
+        <div class="panel">
+            <h2>Результат</h2>
+            <div id="response"></div>
+        </div>
+    </div>
+    
+    <div class="panel" style="margin-top: 20px;">
+        <h2>Превью письма</h2>
+        <iframe id="preview"></iframe>
+    </div>
+
+    <script>
+        async function generateEmail() {
+            const statusEl = document.getElementById('status');
+            const responseEl = document.getElementById('response');
+            const previewEl = document.getElementById('preview');
+            
+            statusEl.innerHTML = '<div class="result">⏳ Генерирую письмо...</div>';
+            responseEl.innerHTML = '';
+            
+            try {
+                const response = await fetch('https://functions.poehali.dev/d2a2e722-c697-4c1e-a3c7-af2366b408af', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        event_id: parseInt(document.getElementById('eventId').value),
+                        template_id: parseInt(document.getElementById('templateId').value),
+                        theme: document.getElementById('theme').value,
+                        test_mode: true
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusEl.innerHTML = '<div class="result success">✅ Письмо сгенерировано!</div>';
+                    
+                    // Показываем детали
+                    let details = '<h3>AI Reasoning:</h3><p>' + (data.ai_reasoning || 'N/A') + '</p>';
+                    details += '<h3>Выбранные спикеры:</h3><ul>';
+                    if (data.selected_speakers) {
+                        data.selected_speakers.forEach(speaker => {
+                            details += '<li>' + (typeof speaker === 'string' ? speaker : speaker.name || JSON.stringify(speaker)) + '</li>';
+                        });
+                    }
+                    details += '</ul>';
+                    
+                    details += '<h3>Данные для шаблона:</h3><pre>' + JSON.stringify(data.data, null, 2) + '</pre>';
+                    
+                    responseEl.innerHTML = details;
+                    
+                    // Показываем превью
+                    const previewDoc = previewEl.contentDocument || previewEl.contentWindow.document;
+                    previewDoc.open();
+                    previewDoc.write(data.rendered_html || '');
+                    previewDoc.close();
+                } else {
+                    statusEl.innerHTML = '<div class="result error">❌ Ошибка: ' + (data.error || 'Unknown error') + '</div>';
+                    responseEl.innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                }
+            } catch (error) {
+                statusEl.innerHTML = '<div class="result error">❌ Ошибка: ' + error.message + '</div>';
+                responseEl.innerHTML = '<pre>' + error.stack + '</pre>';
+            }
+        }
+    </script>
+</body>
+</html>
