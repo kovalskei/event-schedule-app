@@ -88,69 +88,45 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         conn.commit()
         
         indexed_count = 0
+        all_texts = []
+        all_metadata = []
         
         if program_doc_url:
             program_text = read_google_doc(program_doc_url)
             if program_text:
                 lines = program_text.strip().split('\n')
-                
                 max_items = 20
                 processed = 0
                 
                 for line in lines:
                     if processed >= max_items:
-                        print(f"[INFO] Reached limit of {max_items} program items")
                         break
-                    
                     line = line.strip()
                     if not line or len(line) < 10:
                         continue
-                    
-                    try:
-                        embedding = create_embedding(line, openai_key, openrouter_key, gemini_key)
-                        
-                        cur.execute(
-                            "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
-                            str(event_id) + ", 'program_item', '" + line.replace("'", "''") + "', '{}', ARRAY[" + 
-                            ",".join(str(x) for x in embedding) + "])"
-                        )
-                        
-                        indexed_count += 1
-                        processed += 1
-                    except Exception as e:
-                        print(f"[ERROR] Failed to index program line: {str(e)}")
-                        continue
+                    all_texts.append(line)
+                    all_metadata.append({'event_id': event_id, 'item_type': 'program_item', 'content': line})
+                    processed += 1
+                
+                print(f"[INFO] Collected {processed} program items")
         
         if pain_doc_url:
             pain_text = read_google_doc(pain_doc_url)
             if pain_text:
                 paragraphs = [p.strip() for p in pain_text.split('\n\n') if p.strip()]
-                
                 max_pain_items = 10
                 processed_pain = 0
                 
                 for para in paragraphs:
                     if processed_pain >= max_pain_items:
-                        print(f"[INFO] Reached limit of {max_pain_items} pain points")
                         break
-                    
                     if len(para) < 10:
                         continue
-                    
-                    try:
-                        embedding = create_embedding(para, openai_key, openrouter_key, gemini_key)
-                        
-                        cur.execute(
-                            "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
-                            str(event_id) + ", 'pain_point', '" + para.replace("'", "''") + "', '{}', ARRAY[" + 
-                            ",".join(str(x) for x in embedding) + "])"
-                        )
-                        
-                        indexed_count += 1
-                        processed_pain += 1
-                    except Exception as e:
-                        print(f"[ERROR] Failed to index pain point: {str(e)}")
-                        continue
+                    all_texts.append(para)
+                    all_metadata.append({'event_id': event_id, 'item_type': 'pain_point', 'content': para})
+                    processed_pain += 1
+                
+                print(f"[INFO] Collected {processed_pain} pain points")
         
         cur.execute(
             "SELECT html_layout FROM t_p22819116_event_schedule_app.email_templates WHERE event_id = " + str(event_id) + " LIMIT 10"
@@ -160,34 +136,47 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if templates:
             style_snippets = extract_style_snippets([t[0] for t in templates])
-            
             max_snippets = 10
             processed_snippets = 0
             
             for snippet in style_snippets:
                 if processed_snippets >= max_snippets:
-                    print(f"[INFO] Reached limit of {max_snippets} style snippets")
                     break
-                
                 if len(snippet) < 20:
                     continue
-                
-                try:
-                    embedding = create_embedding(snippet, openai_key, openrouter_key, gemini_key)
-                    
-                    cur.execute(
-                        "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
-                        str(event_id) + ", 'style_snippet', '" + snippet.replace("'", "''") + "', '{}', ARRAY[" + 
-                        ",".join(str(x) for x in embedding) + "])"
-                    )
-                    
-                    indexed_count += 1
-                    processed_snippets += 1
-                except Exception as e:
-                    print(f"[ERROR] Failed to index style snippet: {str(e)}")
-                    continue
+                all_texts.append(snippet)
+                all_metadata.append({'event_id': event_id, 'item_type': 'style_snippet', 'content': snippet})
+                processed_snippets += 1
             
-            print(f"[INFO] Indexed {processed_snippets} style snippets from email templates")
+            print(f"[INFO] Collected {processed_snippets} style snippets")
+        
+        if not all_texts:
+            print(f"[WARNING] No texts to index for event {event_id}")
+            conn.commit()
+            cur.close()
+            conn.close()
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'success': True, 'indexed_count': 0, 'event_id': event_id})
+            }
+        
+        print(f"[INFO] Creating embeddings for {len(all_texts)} texts...")
+        embeddings = create_embeddings_batch(all_texts, openai_key, openrouter_key, gemini_key)
+        
+        for i, (meta, embedding) in enumerate(zip(all_metadata, embeddings)):
+            try:
+                cur.execute(
+                    "INSERT INTO t_p22819116_event_schedule_app.knowledge_store (event_id, item_type, content, metadata, embedding) VALUES (" + 
+                    str(meta['event_id']) + ", '" + meta['item_type'] + "', '" + meta['content'].replace("'", "''") + "', '{}', ARRAY[" + 
+                    ",".join(str(x) for x in embedding) + "])"
+                )
+                indexed_count += 1
+            except Exception as e:
+                print(f"[ERROR] Failed to insert item {i}: {str(e)[:100]}")
+                continue
+        
+        print(f"[SUCCESS] Inserted {indexed_count} items into database")
         
         conn.commit()
         cur.close()
@@ -300,6 +289,53 @@ def read_google_doc(url: str) -> str:
     except Exception as e:
         print(f'[ERROR] Failed to read Google doc: {str(e)}')
         return ''
+
+def create_embeddings_batch(texts: List[str], openai_key: str, openrouter_key: str, gemini_key: str = '') -> List[List[float]]:
+    """Создаёт эмбеддинги батчем через OpenAI (быстрее чем по одному)"""
+    
+    if openai_key:
+        data = {
+            'model': 'text-embedding-3-small',
+            'input': [text[:8000] for text in texts]
+        }
+        
+        req = urllib.request.Request(
+            'https://api.openai.com/v1/embeddings',
+            data=json.dumps(data).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {openai_key}'
+            }
+        )
+        
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                response_text = response.read().decode('utf-8')
+                result = json.loads(response_text)
+                
+                if 'error' in result:
+                    error_msg = result.get('error', {}).get('message', str(result['error']))
+                    print(f"[WARNING] OpenAI batch error: {error_msg}, falling back to one-by-one")
+                else:
+                    embeddings = [item['embedding'] for item in result['data']]
+                    print(f"[SUCCESS] Got {len(embeddings)} embeddings from OpenAI batch")
+                    return embeddings
+        except Exception as e:
+            print(f"[WARNING] OpenAI batch failed: {str(e)[:200]}, falling back to one-by-one")
+    
+    print(f"[INFO] Processing {len(texts)} embeddings one by one...")
+    embeddings = []
+    for i, text in enumerate(texts):
+        try:
+            emb = create_embedding(text, openai_key, openrouter_key, gemini_key)
+            embeddings.append(emb)
+            if (i + 1) % 5 == 0:
+                print(f"[INFO] Processed {i + 1}/{len(texts)} embeddings")
+        except Exception as e:
+            print(f"[ERROR] Failed embedding {i}: {str(e)[:100]}")
+            embeddings.append([0.0] * 1536)
+    
+    return embeddings
 
 def create_embedding(text: str, openai_key: str, openrouter_key: str, gemini_key: str = '') -> List[float]:
     """Создаёт эмбеддинг через Gemini (приоритет), OpenAI или OpenRouter"""
