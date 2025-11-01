@@ -188,11 +188,11 @@ HTML TO CONVERT:
                 'Content-Type': 'application/json'
             },
             json={
-                'model': 'openai/o1',
+                'model': 'anthropic/claude-3.5-sonnet',
                 'messages': [{'role': 'user', 'content': prompt}],
-                'max_completion_tokens': 16000
+                'max_tokens': 16000
             },
-            timeout=110
+            timeout=60
         )
         
         if response.status_code != 200:
