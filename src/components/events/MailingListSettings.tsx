@@ -191,7 +191,6 @@ export default function MailingListSettings({
         body: JSON.stringify({
           action: 'generate_drafts',
           list_id: mailingList.id,
-          use_v2: true,
         }),
       });
 
@@ -201,14 +200,12 @@ export default function MailingListSettings({
         throw new Error(data.error);
       }
 
-      const isV2 = data.version === 'v2';
-      const badge = isV2 ? '🔍 RAG' : '';
-
       toast({
-        title: `Черновики созданы ${badge}`,
+        title: 'Черновики созданы',
         description: data.message || `Создано ${data.count || 0} писем`,
       });
 
+      // Обновляем список мероприятий чтобы показать badge
       onUpdate();
     } catch (error: any) {
       toast({
