@@ -294,9 +294,10 @@ def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
                 repeating.append((group[0], group))
                 return repeating  # Возвращаем сразу!
     
-    # Fallback: Ищем обычные div
+    # Fallback: Ищем обычные div (только крупные блоки >200 символов)
     div_pattern = r'<div([^>]*)>((?:(?!<div[^>]*>|</div>).)*)</div>'
     all_divs = list(re.finditer(div_pattern, html, re.DOTALL))
+    all_divs = [m for m in all_divs if len(m.group(0)) > 200]  # Фильтруем маленькие блоки
     
     if len(all_divs) >= 2:
         groups = []
@@ -320,9 +321,12 @@ def find_repeating_blocks(html: str) -> List[Tuple[str, List[str]]]:
             if len(group) >= 3:
                 repeating.append((group[0], group))
     
-    # Ищем другие паттерны
+    # Ищем другие паттерны (только крупные блоки)
     for pattern in patterns:
         blocks = re.findall(pattern, html, re.DOTALL)
+        # Фильтруем маленькие блоки
+        blocks = [b for b in blocks if len(b) > 200]
+        
         if len(blocks) < 2:
             continue
         
@@ -360,8 +364,13 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
     # Шаг 1: Найти повторяющиеся блоки
     repeating_blocks = find_repeating_blocks(html)
     
-    # Шаг 2: Заменить повторяющиеся блоки на циклы
+    # Шаг 2: Заменить повторяющиеся блоки на циклы (от больших к меньшим)
+    # Сортируем по размеру — сначала обрабатываем крупные блоки
+    repeating_blocks = sorted(repeating_blocks, key=lambda x: len(x[0]), reverse=True)
+    
     result = html
+    processed_areas = []  # Храним уже обработанные позиции
+    
     for template_block, instances in repeating_blocks:
         if len(instances) < 2:
             continue
@@ -398,8 +407,24 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, Any]]:
         if first_occurrence not in result:
             continue
         
+        # Проверяем, не попадает ли этот блок в уже обработанную область
+        first_pos = result.find(first_occurrence)
+        skip_block = False
+        for start, end in processed_areas:
+            if start <= first_pos < end:
+                skip_block = True
+                print(f"[SKIP] Block already inside processed loop at pos {first_pos}")
+                break
+        
+        if skip_block:
+            continue
+        
         # Заменяем первое вхождение на цикл
         result = result.replace(first_occurrence, loop_html, 1)
+        
+        # Запоминаем обработанную область
+        new_pos = result.find(loop_html)
+        processed_areas.append((new_pos, new_pos + len(loop_html)))
         
         # Удаляем остальные экземпляры
         for instance in instances[1:]:
