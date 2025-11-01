@@ -116,20 +116,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 subject_hint, key_message = plan_row
         
         query_text = key_message if key_message else (instructions if instructions else template_name)
+        query_embedding = create_embedding(query_text, openrouter_key)
         
-        try:
-            query_embedding = create_embedding(query_text, openrouter_key)
-            cur.execute(
-                "SELECT content, item_type, metadata FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + 
-                str(event_id) + " ORDER BY embedding <-> ARRAY[" + ",".join(str(x) for x in query_embedding) + "] LIMIT 5"
-            )
-            rag_results = cur.fetchall()
-        except:
-            cur.execute(
-                "SELECT content, item_type, metadata FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + 
-                str(event_id) + " LIMIT 5"
-            )
-            rag_results = cur.fetchall()
+        cur.execute(
+            "SELECT content, item_type, metadata FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + 
+            str(event_id) + " ORDER BY embedding <-> ARRAY[" + ",".join(str(x) for x in query_embedding) + "] LIMIT 5"
+        )
+        
+        rag_results = cur.fetchall()
         
         if not rag_results:
             cur.close()
@@ -156,17 +150,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         cta_url = cta_row[0] if cta_row and cta_row[0] else 'https://human-obuchenie.ru'
         cta_text_default = cta_row[1] if cta_row and cta_row[1] else 'Узнать больше'
         
-        subject_instruction = ""
-        if subject_hint:
-            subject_instruction = f"""
-ТЕМА ПИСЬМА ФИКСИРОВАНА (из контент-плана):
-"{subject_hint}"
-
-⚠️ НЕ МЕНЯЙ ТЕМУ! Используй её как есть в поле "subject".
-"""
-        else:
-            subject_instruction = "5. subject: тема письма до 50 символов"
-        
         prompt = f"""Ты — эксперт по email-маркетингу для мероприятий.
 
 КОНТЕКСТ (релевантные данные из программы и болей HR):
@@ -176,8 +159,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 {instructions}
 
 {"КЛЮЧЕВОЕ СООБЩЕНИЕ: " + key_message if key_message else ""}
-
-{subject_instruction}
+{"ПОДСКАЗКА ДЛЯ ТЕМЫ: " + subject_hint if subject_hint else ""}
 
 ЗАДАЧА:
 Заполни слоты для email-шаблона. НЕ генерируй HTML! Верни ТОЛЬКО данные для слотов.
@@ -191,13 +173,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 3. speakers: массив из 2-3 спикеров из контекста, выбери самых релевантных
    - Каждый спикер: {{"name": "Имя", "title": "Должность", "pitch": "Что даст доклад (1 предложение)", "photo_url": "https://via.placeholder.com/150"}}
 4. cta_text: текст для кнопки (например: "Посмотреть программу", "Зарегистрироваться")
+5. subject: тема письма до 50 символов
 
 CTA ссылка будет подставлена автоматически: {cta_url}
 Текст CTA по умолчанию: {cta_text_default}
 
 Верни JSON в точном формате:
 {{
-  "subject": "{subject_hint if subject_hint else 'тема письма'}",
+  "subject": "тема письма",
   "headline": "заголовок",
   "intro_text": "вступительный текст",
   "speakers": [
@@ -215,9 +198,6 @@ CTA ссылка будет подставлена автоматически: {
         try:
             slots_data = json.loads(generated)
             
-            if subject_hint:
-                slots_data['subject'] = subject_hint
-            
             slots_data['cta_url'] = cta_url
             
             filled_html = fill_html_template(html_layout, slots_data)
@@ -227,21 +207,18 @@ CTA ссылка будет подставлена автоматически: {
                 conn2 = psycopg2.connect(db_url)
                 cur2 = conn2.cursor()
                 cur2.execute(
-                    "SELECT html_template FROM t_p22819116_event_schedule_app.email_templates " +
-                    "WHERE event_id = " + str(event_id) + 
-                    " AND content_type_id = " + str(content_type_id) +
-                    " AND is_example = TRUE LIMIT 1"
+                    "SELECT email_template_examples FROM t_p22819116_event_schedule_app.events WHERE id = " + str(event_id)
                 )
-                template_example_row = cur2.fetchone()
+                template_examples_row = cur2.fetchone()
                 cur2.close()
                 conn2.close()
                 
-                if template_example_row and template_example_row[0]:
-                    validation_prompt = f"""Проверь сгенерированное письмо на соответствие стилю эталонного шаблона.
+                if template_examples_row and template_examples_row[0]:
+                    validation_prompt = f"""Проверь сгенерированное письмо на соответствие стилю примеров.
 
-ЭТАЛОННЫЙ ШАБЛОН (оригинал): {template_example_row[0]}
+ПРИМЕРЫ: {template_examples_row[0]}
 
-СГЕНЕРИРОВАННОЕ ПИСЬМО: {filled_html}
+СГЕНЕРИРОВАНО: {filled_html}
 
 Оцени по 7 критериям (colors, typography, structure, spacing, cta_buttons, responsive, branding) от 0 до 10.
 Верни JSON: {{"overall_score": 8.5, "issues": [...], "suggestions": [...], "passed": true}}"""

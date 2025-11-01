@@ -1,64 +1,28 @@
 {
   "tests": [
     {
-      "name": "Missing template_html",
+      "name": "Missing html_content",
       "method": "POST",
       "body": {},
       "expectedStatus": 400,
       "expectedBody": {
-        "error": "template_html required"
+        "error": "html_content required"
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Render simple template",
+      "name": "Valid template generation",
       "method": "POST",
       "body": {
-        "template_html": "<html><body><h1>{{greeting|Hello}}</h1><p>{{intro_text|Welcome to our event}}</p></body></html>",
-        "data": {
-          "greeting": "Здравствуйте",
-          "intro_text": "Приглашаем вас на конференцию"
-        },
-        "test_mode": true
-      },
-      "expectedStatus": 200,
-      "expectedBody": {
-        "rendered_html": "<html><body><h1>Здравствуйте</h1><p>Приглашаем вас на конференцию</p></body></html>"
-      },
-      "bodyMatcher": "partial"
-    },
-    {
-      "name": "Render template with array (speakers)",
-      "method": "POST",
-      "body": {
-        "template_html": "<html><body>{{speakers|[]}}<div>{{speaker_1_job|Job}}: {{speaker_1_title|Title}}</div><div>{{speaker_2_job|Job}}: {{speaker_2_title|Title}}</div></body></html>",
-        "data": {
-          "speakers": [
-            {"job": "ex-HRD, РЖД", "title": "Развитие и переобучение сотрудников"},
-            {"job": "Лидер T&D", "title": "Адаптация в Додо Пицце"}
-          ]
-        },
-        "test_mode": true
-      },
-      "expectedStatus": 200,
-      "expectedBody": {
-        "rendered_html": "<html><body><div>ex-HRD, РЖД: Развитие и переобучение сотрудников</div><div>Лидер T&D: Адаптация в Додо Пицце</div></body></html>"
-      },
-      "bodyMatcher": "partial"
-    },
-    {
-      "name": "Save to database",
-      "method": "POST",
-      "body": {
-        "template_html": "<html><body>{{greeting|Hello}}</body></html>",
-        "data": {"greeting": "Hi"},
+        "html_content": "<html><body><h1>Hello World</h1><p>This is a test email.</p><a href='#'>Click here</a></body></html>",
         "event_id": 1,
         "content_type_id": 1,
         "name": "Test Template"
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "success": true
+        "success": true,
+        "original_saved": true
       },
       "bodyMatcher": "partial"
     }

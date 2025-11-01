@@ -6,7 +6,7 @@
       "body": {},
       "expectedStatus": 400,
       "expectedBody": {
-        "error": "Either draft_id or (event_id + content_type_id + generated_html) required"
+        "error": "event_id and generated_html required"
       },
       "bodyMatcher": "partial"
     },
@@ -15,7 +15,6 @@
       "method": "POST",
       "body": {
         "event_id": 1,
-        "content_type_id": 1,
         "generated_html": "<html><body><h1>Test Email</h1></body></html>"
       },
       "expectedStatus": 200,
