@@ -338,13 +338,20 @@ export default function EventsManager() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row gap-4 sm:justify-between sm:items-center">
               <h2 className="text-2xl font-semibold">Мероприятия</h2>
-              <CreateEventDialog
-                open={createEventOpen}
-                onOpenChange={setCreateEventOpen}
-                newEvent={newEvent}
-                onEventChange={setNewEvent}
-                onCreateEvent={handleCreateEvent}
-              />
+              <div className="flex gap-2">
+                <Link to="/template-test">
+                  <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    🧪 Тест шаблонов
+                  </button>
+                </Link>
+                <CreateEventDialog
+                  open={createEventOpen}
+                  onOpenChange={setCreateEventOpen}
+                  newEvent={newEvent}
+                  onEventChange={setNewEvent}
+                  onCreateEvent={handleCreateEvent}
+                />
+              </div>
             </div>
 
             {events.length === 0 ? (
