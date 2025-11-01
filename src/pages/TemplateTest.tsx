@@ -64,6 +64,11 @@ const TemplateTest = () => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
+      
+      if (content.length > 15000) {
+        alert('⚠️ Файл слишком большой (>15KB). O1-mini может не успеть обработать за 60 секунд.\n\nПопробуйте упростить HTML или используйте меньший файл.');
+      }
+      
       setOriginalHTML(content);
       setConvertedHTML('');
     };
@@ -74,6 +79,7 @@ const TemplateTest = () => {
     if (!originalHTML) return;
 
     setLoading(true);
+    setConvertedHTML('');
     try {
       const response = await fetch('https://functions.poehali.dev/616d6890-24c3-49c8-8b29-692dd342933b', {
         method: 'POST',
@@ -86,10 +92,20 @@ const TemplateTest = () => {
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`Ошибка сервера: ${response.status}`);
+      }
+
       const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
       setConvertedHTML(data.template_content || '');
     } catch (error: any) {
-      alert(`Ошибка: ${error.message}`);
+      alert(`Ошибка преобразования: ${error.message}\n\nВозможно файл слишком большой. Попробуйте меньший файл или подождите дольше (o1-mini работает до 60 секунд).`);
+      console.error('Conversion error:', error);
     } finally {
       setLoading(false);
     }
@@ -128,8 +144,14 @@ const TemplateTest = () => {
             disabled={loading || !originalHTML}
             className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Преобразую...' : 'Преобразовать'}
+            {loading ? '⏳ Преобразую (до 60 сек)...' : 'Преобразовать'}
           </button>
+          
+          {loading && (
+            <span className="text-sm text-gray-500">
+              O1-mini думает... Это может занять до минуты для больших файлов
+            </span>
+          )}
         </div>
 
         {originalHTML && (
