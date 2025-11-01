@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Upload } from 'lucide-react';
 import Icon from '@/components/ui/icon';
 
 const DEMO_HTML = `<!DOCTYPE html>
@@ -55,6 +54,7 @@ const TemplateTest = () => {
   const [convertedHTML, setConvertedHTML] = useState('');
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [useAI, setUseAI] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -88,7 +88,8 @@ const TemplateTest = () => {
         },
         body: JSON.stringify({
           html_content: originalHTML,
-          test_mode: true
+          test_mode: true,
+          use_ai: useAI
         })
       });
 
@@ -139,17 +140,28 @@ const TemplateTest = () => {
             📋 Загрузить демо
           </button>
 
+          <label className="flex items-center gap-2 bg-white border-2 border-gray-300 px-6 py-3 rounded-lg cursor-pointer hover:border-purple-500">
+            <input 
+              type="checkbox" 
+              checked={useAI}
+              onChange={(e) => setUseAI(e.target.checked)}
+              className="w-4 h-4"
+            />
+            <span className="font-medium text-gray-700">🤖 AI</span>
+            <span className="text-xs text-gray-500">(медленнее)</span>
+          </label>
+
           <button
             onClick={handleConvert}
             disabled={loading || !originalHTML}
             className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? '⏳ Преобразую (10-30 сек)...' : 'Преобразовать'}
+            {loading ? '⏳ Преобразую...' : `⚡ Преобразовать (${useAI ? 'AI' : 'Regex'})`}
           </button>
           
           {loading && (
             <span className="text-sm text-gray-500">
-              Claude 3.5 Sonnet работает... Обычно 10-30 секунд
+              {useAI ? '🤖 Claude работает (может быть долго)...' : '⚡ Быстрая regex-замена...'}
             </span>
           )}
         </div>

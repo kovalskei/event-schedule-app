@@ -1,9 +1,10 @@
 import json
 import os
 import re
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import psycopg2
 import requests
+from html.parser import HTMLParser
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -36,6 +37,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         content_type_id = body_data.get('content_type_id')
         template_name = body_data.get('name', 'Шаблон')
         test_mode = body_data.get('test_mode', False)
+        use_ai = body_data.get('use_ai', False)  # Новый параметр: использовать AI или regex
         
         print(f"[INFO] Processing HTML: {len(html_content) if html_content else 0} chars")
         
@@ -61,16 +63,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'body': json.dumps({'error': 'DATABASE_URL not configured'})
             }
         
-        openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
-        if not openrouter_key:
-            return {
-                'statusCode': 500,
-                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
-            }
-        
         try:
-            html_with_slots = convert_to_template_ai(html_content, openrouter_key)
+            if use_ai:
+                # AI-режим: медленнее, но умнее
+                openrouter_key = os.environ.get('OPENROUTER_API_KEY', '')
+                if not openrouter_key:
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'OPENROUTER_API_KEY not configured'})
+                    }
+                html_with_slots = convert_to_template_ai(html_content, openrouter_key)
+                variables = {}
+            else:
+                # Regex-режим: мгновенно, сохраняет все стили
+                html_with_slots, variables = convert_to_template_regex(html_content)
+                print(f"[INFO] Regex conversion: found {len(variables)} variables")
             
             if test_mode:
                 return {
@@ -79,7 +87,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({
                         'template_content': html_with_slots,
                         'original_length': len(html_content),
-                        'template_length': len(html_with_slots)
+                        'template_length': len(html_with_slots),
+                        'variables': variables,
+                        'method': 'ai' if use_ai else 'regex'
                     })
                 }
             
@@ -139,6 +149,60 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
         'body': json.dumps({'error': 'Method not allowed'})
     }
+
+def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
+    """
+    Быстрая замена через regex (без AI) — работает за миллисекунды
+    Возвращает: (преобразованный HTML, словарь найденных переменных)
+    """
+    variables = {}
+    counter = {'text': 0, 'url': 0, 'img': 0}
+    
+    def replace_text(match):
+        text = match.group(1).strip()
+        # Пропускаем пустые, спец символы, короткие технические строки
+        if not text or len(text) < 3 or text in ['&nbsp;', '​']:
+            return match.group(0)
+        
+        counter['text'] += 1
+        var_name = f"text_{counter['text']}"
+        variables[var_name] = text
+        # Простая замена: >текст< → >{{var}}<
+        return f'>{{{{{{var_name}}}}}}<'
+    
+    def replace_url(match):
+        url = match.group(2).strip()
+        if not url or url.startswith('{{') or url == '#':
+            return match.group(0)
+        
+        counter['url'] += 1
+        var_name = f"url_{counter['url']}"
+        variables[var_name] = url
+        return f'{match.group(1)}{{{{{{var_name}}}}}}{match.group(3)}'
+    
+    def replace_img(match):
+        src = match.group(2).strip()
+        if not src or src.startswith('{{'):
+            return match.group(0)
+        
+        counter['img'] += 1
+        var_name = f"image_{counter['img']}"
+        variables[var_name] = src
+        return f'{match.group(1)}{{{{{{var_name}}}}}}{match.group(3)}'
+    
+    result = html
+    
+    # Заменяем <img src="...">
+    result = re.sub(r'(<img[^>]+src=["\'])([^"\']+)(["\'][^>]*>)', replace_img, result)
+    
+    # Заменяем <a href="...">
+    result = re.sub(r'(<a[^>]+href=["\'])([^"\']+)(["\'][^>]*>)', replace_url, result)
+    
+    # Заменяем текст внутри тегов (но НЕ атрибуты style/class)
+    # Паттерн: >текст< (между закрывающей и открывающей скобками)
+    result = re.sub(r'>([^<>{}&]+)<', replace_text, result)
+    
+    return result, variables
 
 def convert_to_template_ai(html: str, api_key: str) -> str:
     """
