@@ -193,6 +193,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         cur.close()
         conn.close()
         
+        print(f"[SUCCESS] Total indexed: {indexed_count} items for event {event_id}")
+        
         return {
             'statusCode': 200,
             'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
@@ -338,7 +340,7 @@ def create_embedding(text: str, openai_key: str, openrouter_key: str, gemini_key
     if openai_key:
         data = {
             'model': 'text-embedding-3-small',
-            'input': text
+            'input': text[:8000]
         }
         
         req = urllib.request.Request(
@@ -356,14 +358,20 @@ def create_embedding(text: str, openai_key: str, openrouter_key: str, gemini_key
                 result = json.loads(response_text)
                 
                 if 'error' in result:
-                    print(f"[WARNING] OpenAI API error: {result['error']}, falling back to OpenRouter")
-                    if not openrouter_key:
-                        raise Exception(f"OpenAI API error: {result['error']}")
+                    error_msg = result.get('error', {}).get('message', str(result['error']))
+                    print(f"[WARNING] OpenAI API error: {error_msg}")
+                    if not openrouter_key and not gemini_key:
+                        raise Exception(f"OpenAI API error: {error_msg}")
                 else:
                     return result['data'][0]['embedding']
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if hasattr(e, 'read') else str(e)
+            print(f"[WARNING] OpenAI HTTP error {e.code}: {error_body[:200]}")
+            if not openrouter_key and not gemini_key:
+                raise
         except Exception as e:
-            print(f"[WARNING] OpenAI request failed: {str(e)}, falling back to OpenRouter")
-            if not openrouter_key:
+            print(f"[WARNING] OpenAI request failed: {str(e)[:200]}")
+            if not openrouter_key and not gemini_key:
                 raise
     
     if openrouter_key:
