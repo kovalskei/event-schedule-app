@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Революция в HR: Как технологии меняют подбор персонала</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7fa;
+            color: #2c3e50;
+        }
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 {
+            color: #ffffff;
+            font-size: 32px;
+            margin: 0 0 15px 0;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+        .header p {
+            color: #e8eaf6;
+            font-size: 18px;
+            margin: 0;
+        }
+        .hero-image {
+            width: 100%;
+            height: 350px;
+            object-fit: cover;
+            display: block;
+        }
+        .content {
+            padding: 45px 35px;
+        }
+        .intro-text {
+            font-size: 19px;
+            line-height: 1.8;
+            color: #34495e;
+            margin-bottom: 30px;
+            font-weight: 400;
+        }
+        .stats-block {
+            background: linear-gradient(to right, #f8f9fa, #e9ecef);
+            border-left: 5px solid #667eea;
+            padding: 25px 30px;
+            margin: 35px 0;
+            border-radius: 8px;
+        }
+        .stats-block h3 {
+            color: #667eea;
+            font-size: 22px;
+            margin: 0 0 20px 0;
+            font-weight: 600;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 18px;
+        }
+        .stat-number {
+            font-size: 42px;
+            font-weight: 800;
+            color: #764ba2;
+            margin-right: 20px;
+            min-width: 90px;
+        }
+        .stat-text {
+            font-size: 16px;
+            color: #495057;
+            line-height: 1.5;
+        }
+        .section-title {
+            font-size: 26px;
+            color: #2c3e50;
+            margin: 40px 0 20px 0;
+            font-weight: 700;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 12px;
+        }
+        .benefit-card {
+            background-color: #ffffff;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.3s ease;
+        }
+        .benefit-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+        .benefit-icon {
+            font-size: 36px;
+            margin-bottom: 15px;
+        }
+        .benefit-title {
+            font-size: 20px;
+            color: #667eea;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        .benefit-text {
+            font-size: 16px;
+            color: #6c757d;
+            line-height: 1.7;
+        }
+        .cta-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 50px 40px;
+            text-align: center;
+            margin: 40px 0;
+            border-radius: 12px;
+        }
+        .cta-title {
+            color: #ffffff;
+            font-size: 28px;
+            margin: 0 0 20px 0;
+            font-weight: 700;
+        }
+        .cta-subtitle {
+            color: #e8eaf6;
+            font-size: 18px;
+            margin: 0 0 30px 0;
+            line-height: 1.6;
+        }
+        .cta-button {
+            display: inline-block;
+            background-color: #ffffff;
+            color: #667eea;
+            padding: 18px 50px;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 18px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+        .cta-button:hover {
+            background-color: #f8f9fa;
+            transform: scale(1.05);
+        }
+        .secondary-button {
+            display: inline-block;
+            background-color: transparent;
+            color: #ffffff;
+            border: 2px solid #ffffff;
+            padding: 15px 40px;
+            text-decoration: none;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 16px;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+        }
+        .secondary-button:hover {
+            background-color: rgba(255,255,255,0.1);
+        }
+        .testimonial {
+            background-color: #f8f9fa;
+            border-left: 5px solid #764ba2;
+            padding: 30px;
+            margin: 30px 0;
+            font-style: italic;
+            border-radius: 8px;
+        }
+        .testimonial-text {
+            font-size: 17px;
+            line-height: 1.8;
+            color: #495057;
+            margin-bottom: 15px;
+        }
+        .testimonial-author {
+            font-size: 16px;
+            color: #667eea;
+            font-weight: 600;
+            font-style: normal;
+        }
+        .footer {
+            background-color: #2c3e50;
+            color: #bdc3c7;
+            padding: 35px 30px;
+            text-align: center;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        @media only screen and (max-width: 600px) {
+            .header h1 { font-size: 26px; }
+            .content { padding: 30px 20px; }
+            .stat-number { font-size: 32px; }
+            .cta-section { padding: 35px 25px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Революция в HR-технологиях 2024</h1>
+            <p>Как искусственный интеллект меняет правила игры в подборе персонала</p>
+        </div>
+
+        <img src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=680&h=350&fit=crop" alt="Команда HR специалистов" class="hero-image">
+
+        <div class="content">
+            <p class="intro-text">
+                Современный рынок труда переживает беспрецедентную трансформацию. За последние три года мы наблюдаем радикальные изменения в том, как компании находят, оценивают и нанимают талантливых специалистов. Технологии искусственного интеллекта, машинное обучение и аналитика больших данных открывают новые горизонты для HR-специалистов, позволяя принимать более взвешенные решения и значительно сокращать время закрытия вакансий.
+            </p>
+
+            <div class="stats-block">
+                <h3>📊 Ключевые показатели индустрии</h3>
+                <div class="stat-item">
+                    <div class="stat-number">73%</div>
+                    <div class="stat-text">компаний уже внедрили AI-инструменты в процесс подбора персонала и отмечают рост эффективности на 40-60%</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">52%</div>
+                    <div class="stat-text">HR-директоров считают автоматизацию рутинных задач главным приоритетом на 2024 год</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">2.5x</div>
+                    <div class="stat-text">быстрее закрываются вакансии при использовании современных HR-платформ с элементами AI</div>
+                </div>
+            </div>
+
+            <h2 class="section-title">💡 Почему это важно для вашего бизнеса</h2>
+
+            <div class="benefit-card">
+                <div class="benefit-icon">⚡</div>
+                <div class="benefit-title">Экономия времени до 80%</div>
+                <div class="benefit-text">
+                    Автоматизация первичного отбора резюме, проведение видеоинтервью с использованием AI и автоматическая оценка soft skills позволяют рекрутерам фокусироваться на действительно важных задачах — построении отношений с кандидатами и стратегическом планировании найма.
+                </div>
+            </div>
+
+            <div class="benefit-card">
+                <div class="benefit-icon">🎯</div>
+                <div class="benefit-title">Точность подбора +65%</div>
+                <div class="benefit-text">
+                    Машинное обучение анализирует сотни параметров успешных сотрудников в вашей компании и создаёт идеальные профили кандидатов. Это снижает текучесть персонала на 35% и повышает удовлетворённость новых сотрудников их должностными обязанностями.
+                </div>
+            </div>
+
+            <div class="benefit-card">
+                <div class="benefit-icon">💰</div>
+                <div class="benefit-title">Снижение стоимости найма на 45%</div>
+                <div class="benefit-text">
+                    Оптимизация процессов, сокращение времени закрытия вакансий и снижение количества неудачных наймов напрямую влияют на ROI департамента HR. Компании экономят в среднем от 3 до 8 миллионов рублей ежегодно на каждые 100 закрытых вакансий.
+                </div>
+            </div>
+
+            <div class="testimonial">
+                <div class="testimonial-text">
+                    "После внедрения современной HR-платформы мы сократили время закрытия вакансий с 45 до 18 дней, при этом качество кандидатов значительно выросло. Особенно впечатлила точность AI-скоринга — 9 из 10 рекомендованных кандидатов успешно прошли испытательный срок."
+                </div>
+                <div class="testimonial-author">— Мария Соколова, HR-директор, TechCorp (5000+ сотрудников)</div>
+            </div>
+
+            <h2 class="section-title">🔮 Тренды 2024-2025</h2>
+
+            <p class="intro-text">
+                Эксперты прогнозируют дальнейший рост инвестиций в HR-технологии. Ожидается появление новых инструментов для оценки культурной совместимости, предиктивной аналитики текучести персонала и персонализированных путей адаптации новых сотрудников. Компании, которые внедрят эти решения первыми, получат значительное конкурентное преимущество на рынке талантов.
+            </p>
+
+            <div class="cta-section">
+                <h2 class="cta-title">Готовы к трансформации?</h2>
+                <p class="cta-subtitle">
+                    Присоединяйтесь к ведущей конференции по HR-инновациям, где топовые эксперты поделятся практическими кейсами внедрения AI в рекрутинг. Только проверенные инструменты и реальные результаты.
+                </p>
+                <a href="https://test-event.example.com/details" class="cta-button">Узнать подробнее</a>
+                <br>
+                <a href="https://test-event.example.com/program" class="secondary-button">Посмотреть программу</a>
+            </div>
+
+            <p class="intro-text">
+                Не упустите возможность стать частью HR-революции. На конференции вы получите доступ к эксклюзивным мастер-классам, нетворкингу с лидерами индустрии и демонстрациям новейших HR-платформ от ведущих разработчиков.
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>Вы получили это письмо, потому что подписаны на рассылку Test Event</p>
+            <p><a href="#">Отписаться</a> | <a href="#">Управление подписками</a></p>
+            <p>© 2024 Test Event. Все права защищены.</p>
+        </div>
+    </div>
+</body>
+</html>

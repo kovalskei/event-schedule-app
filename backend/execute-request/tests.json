@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "Execute template request",
+      "request": {
+        "method": "POST",
+        "body": {
+          "html_content": "<html><body><h1>Test</h1></body></html>",
+          "event_id": 1,
+          "content_type_id": 13,
+          "name": "Test Template"
+        }
+      },
+      "expected": {
+        "status": 200
+      }
+    }
+  ]
+}
