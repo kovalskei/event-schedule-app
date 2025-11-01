@@ -351,7 +351,7 @@ def create_embedding(text: str, openai_key: str, openrouter_key: str, gemini_key
         )
         
         try:
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 response_text = response.read().decode('utf-8')
                 result = json.loads(response_text)
                 
