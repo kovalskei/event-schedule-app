@@ -56,7 +56,8 @@ const TemplateTest = () => {
   const [slotsSchema, setSlotsSchema] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [mode, setMode] = useState<'regex' | 'hybrid' | 'legacy'>('regex');
+  const [mode, setMode] = useState<'regex' | 'hybrid' | 'legacy' | 'vision'>('regex');
+  const [screenshot, setScreenshot] = useState<string>('');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,8 +78,24 @@ const TemplateTest = () => {
     reader.readAsText(file);
   };
 
+  const handleScreenshotUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setScreenshot(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleConvert = async () => {
     if (!originalHTML) return;
+    if (mode === 'vision' && !screenshot) {
+      alert('⚠️ Для режима Vision AI нужен скриншот блока');
+      return;
+    }
 
     setLoading(true);
     setConvertedHTML('');
@@ -92,7 +109,9 @@ const TemplateTest = () => {
           html_content: originalHTML,
           test_mode: true,
           use_ai: mode === 'legacy',
-          hybrid_ai: mode === 'hybrid'
+          hybrid_ai: mode === 'hybrid',
+          vision_ai: mode === 'vision',
+          screenshot: mode === 'vision' ? screenshot : undefined
         })
       });
 
@@ -178,8 +197,31 @@ const TemplateTest = () => {
               >
                 🤖 Legacy AI
               </button>
+              <button
+                onClick={() => setMode('vision')}
+                className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                  mode === 'vision' 
+                    ? 'bg-purple-600 text-white' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                👁️ Vision AI
+              </button>
             </div>
           </div>
+
+          {mode === 'vision' && (
+            <label className="bg-blue-50 border-2 border-blue-300 rounded-lg px-6 py-3 cursor-pointer hover:border-blue-500 transition-colors flex items-center gap-2">
+              <Icon name="Image" size={20} />
+              <span className="font-medium">{screenshot ? '✅ Скриншот загружен' : '📸 Загрузить скриншот блока'}</span>
+              <input 
+                type="file" 
+                accept="image/*" 
+                onChange={handleScreenshotUpload}
+                className="hidden"
+              />
+            </label>
+          )}
 
           <button
             onClick={handleConvert}
@@ -194,6 +236,7 @@ const TemplateTest = () => {
               {mode === 'regex' && '⚡ Быстрая regex-замена...'}
               {mode === 'hybrid' && '🧠 AI анализ + regex замена...'}
               {mode === 'legacy' && '🤖 Полная генерация через AI...'}
+              {mode === 'vision' && '👁️ Vision AI анализирует скриншот...'}
             </span>
           )}
           
@@ -201,6 +244,7 @@ const TemplateTest = () => {
             {mode === 'regex' && '⚡ Regex: мгновенно, бесплатно, находит циклы автоматически'}
             {mode === 'hybrid' && '🧠 Hybrid AI: AI анализирует → regex применяет (быстрее Legacy, точнее Regex)'}
             {mode === 'legacy' && '🤖 Legacy AI: полная генерация кода через Claude (медленно, дорого)'}
+            {mode === 'vision' && '👁️ Vision AI: GPT-4o анализирует скриншот + HTML → видит визуальные паттерны как человек'}
           </div>
         </div>
 
