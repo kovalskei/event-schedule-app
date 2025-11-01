@@ -139,21 +139,32 @@ def convert_to_template_ai(html: str, api_key: str) -> str:
     4. Верни ТОЛЬКО HTML, без объяснений
     """
     
-    prompt = f"""Преобразуй HTML email в Mustache шаблон. Замени динамический контент на переменные:
+    prompt = f"""Transform this HTML email into a Mustache template by replacing ONLY dynamic content with variables.
 
-ПРАВИЛА:
-1. Заголовки <h1>, <h2> → {{{{intro_heading}}}}, {{{{subheading}}}}
-2. Параграфы с текстом → {{{{intro_text}}}}, {{{{description}}}}
-3. Ссылки: href → {{{{cta_url}}}}, текст → {{{{cta_text}}}}
-4. Изображения: src → {{{{photo_url}}}}, alt → {{{{speaker_name}}}}
-5. Повторяющиеся блоки (спикеры, товары) → {{{{#speakers}}}}...{{{{/speakers}}}}
+CRITICAL RULES:
+1. PRESERVE 100% of HTML structure: all <style>, <table>, <tr>, <td>, <div> tags
+2. PRESERVE 100% of CSS: inline styles, <style> blocks, classes, gradients, colors, fonts
+3. PRESERVE 100% of layout: borders, padding, margin, background-color, box-shadow
+4. REPLACE only text content, URLs, and image sources with Mustache variables
 
-ВАЖНО:
-- Верни ТОЛЬКО HTML код, без markdown блоков и объяснений
-- Сохрани ВСЮ структуру и стили
-- Замени ТОЛЬКО текстовый контент, URL и src
+VARIABLE NAMING (use descriptive names):
+- Headings: {{{{intro_heading}}}}, {{{{stats_heading}}}}, {{{{benefits_heading}}}}
+- Text: {{{{intro_text}}}}, {{{{description}}}}, {{{{testimonial_text}}}}
+- Links: {{{{cta_url}}}}, {{{{cta_text}}}}, {{{{secondary_cta_text}}}}
+- Images: {{{{hero_image_url}}}}, {{{{logo_url}}}}, {{{{speaker_photo}}}}
+- Numbers/Stats: {{{{stat_1_value}}}}, {{{{stat_1_label}}}}, {{{{stat_2_value}}}}
+- Repeating blocks: {{{{#benefits}}}}...{{{{icon}}}}, {{{{title}}}}, {{{{description}}}}...{{{{/benefits}}}}
 
-HTML:
+EXAMPLES OF WHAT TO REPLACE:
+❌ DON'T touch: style="color: #667eea; font-size: 24px; background: linear-gradient(...)"
+✅ DO replace: <h1>Революция в подборе</h1> → <h1>{{{{intro_heading}}}}</h1>
+✅ DO replace: <a href="https://example.com/cta">Узнать больше</a> → <a href="{{{{cta_url}}}}">{{{{cta_text}}}}</a>
+✅ DO replace: <img src="hero.jpg"> → <img src="{{{{hero_image_url}}}}">
+
+OUTPUT FORMAT:
+Return ONLY the HTML code, no markdown blocks, no explanations, no comments.
+
+HTML TO TRANSFORM:
 {html}"""
 
     try:
