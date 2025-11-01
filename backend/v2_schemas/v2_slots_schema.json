@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Email Template Slots Schema (V2)",
+  "description": "Schema for V2 slot-based email templates",
+  "type": "object",
+  "properties": {
+    "intro": {
+      "type": "object",
+      "description": "Opening section with hook and highlights",
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 700,
+          "description": "Main intro text with hook"
+        },
+        "highlights": {
+          "type": "array",
+          "description": "Key bullet points (max 3)",
+          "items": {
+            "type": "string",
+            "maxLength": 140
+          },
+          "maxItems": 3
+        }
+      },
+      "required": ["text"]
+    },
+    "speakers": {
+      "type": "array",
+      "description": "Featured speakers (max 3)",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Speaker full name"
+          },
+          "job": {
+            "type": "string",
+            "description": "Job title"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company name"
+          },
+          "topic": {
+            "type": "string",
+            "description": "Session topic"
+          },
+          "teaser": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Short session description"
+          },
+          "avatar_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Speaker photo URL (optional)"
+          }
+        },
+        "required": ["topic"]
+      }
+    },
+    "cta": {
+      "type": "object",
+      "description": "Call-to-action button",
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60,
+          "description": "Button text"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Target URL (UTM tags added automatically)"
+        }
+      },
+      "required": ["text", "url"]
+    },
+    "footer": {
+      "type": "object",
+      "description": "Footer section (optional)",
+      "properties": {
+        "contact_email": {
+          "type": "string",
+          "format": "email"
+        },
+        "contact_phone": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": ["intro", "speakers", "cta"]
+}

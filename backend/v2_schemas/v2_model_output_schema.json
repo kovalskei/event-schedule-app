@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LLM Output for generate-drafts-v2",
+  "description": "Expected JSON output from AI model for V2 email generation",
+  "type": "object",
+  "properties": {
+    "subject": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 120,
+      "description": "Email subject line (5-120 chars)"
+    },
+    "preheader": {
+      "type": "string",
+      "maxLength": 140,
+      "description": "Email preheader text (optional, max 140 chars)"
+    },
+    "slots": {
+      "$ref": "v2_slots_schema.json"
+    }
+  },
+  "required": ["subject", "slots"]
+}
