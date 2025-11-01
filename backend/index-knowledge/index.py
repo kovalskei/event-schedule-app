@@ -112,9 +112,19 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         program_doc_url, pain_doc_url = result
         
         cur.execute(
-            "DELETE FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
+            "SELECT COUNT(*) FROM t_p22819116_event_schedule_app.knowledge_store WHERE event_id = " + str(event_id)
         )
-        conn.commit()
+        existing_count = cur.fetchone()[0]
+        
+        if existing_count > 0:
+            print(f"[INFO] Event {event_id} already has {existing_count} indexed items, skipping re-indexing")
+            cur.close()
+            conn.close()
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'message': f'Event already indexed with {existing_count} items', 'indexed_count': existing_count, 'skipped': True})
+            }
         
         indexed_count = 0
         all_texts = []
@@ -124,12 +134,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             program_text = read_google_doc(program_doc_url)
             if program_text:
                 lines = program_text.strip().split('\n')
-                max_items = 20
                 processed = 0
                 
                 for line in lines:
-                    if processed >= max_items:
-                        break
                     line = line.strip()
                     if not line or len(line) < 10:
                         continue
@@ -137,25 +144,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     all_metadata.append({'event_id': event_id, 'item_type': 'program_item', 'content': line})
                     processed += 1
                 
-                print(f"[INFO] Collected {processed} program items")
+                print(f"[INFO] Collected {processed} program items (all lines)")
         
         if pain_doc_url:
             pain_text = read_google_doc(pain_doc_url)
             if pain_text:
                 paragraphs = split_by_numbered_paragraphs(pain_text)
-                max_pain_items = 40
                 processed_pain = 0
                 
                 for para in paragraphs:
-                    if processed_pain >= max_pain_items:
-                        break
                     if len(para) < 10:
                         continue
                     all_texts.append(para)
                     all_metadata.append({'event_id': event_id, 'item_type': 'pain_point', 'content': para})
                     processed_pain += 1
                 
-                print(f"[INFO] Collected {processed_pain} pain points (numbered paragraphs)")
+                print(f"[INFO] Collected {processed_pain} pain points (all numbered paragraphs)")
         
         cur.execute(
             "SELECT html_layout FROM t_p22819116_event_schedule_app.email_templates WHERE event_id = " + str(event_id) + " LIMIT 10"
@@ -165,19 +169,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         if templates:
             style_snippets = extract_style_snippets([t[0] for t in templates])
-            max_snippets = 10
             processed_snippets = 0
             
             for snippet in style_snippets:
-                if processed_snippets >= max_snippets:
-                    break
                 if len(snippet) < 20:
                     continue
                 all_texts.append(snippet)
                 all_metadata.append({'event_id': event_id, 'item_type': 'style_snippet', 'content': snippet})
                 processed_snippets += 1
             
-            print(f"[INFO] Collected {processed_snippets} style snippets")
+            print(f"[INFO] Collected {processed_snippets} style snippets (all snippets)")
         
         if not all_texts:
             print(f"[WARNING] No texts to index for event {event_id}")
