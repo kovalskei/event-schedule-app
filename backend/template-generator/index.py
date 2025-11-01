@@ -440,10 +440,20 @@ def analyze_template_with_ai(html: str, api_key: str) -> Dict[str, Any]:
     }
     """
     
+    # Извлекаем текстовое содержимое для лучшего анализа
+    import re
+    text_content = re.sub(r'<[^>]+>', ' ', html)
+    text_content = re.sub(r'\s+', ' ', text_content).strip()
+    
     prompt = f"""Analyze this HTML and return ONLY a JSON instruction for regex replacement. Do NOT generate code.
 
-HTML:
-{html[:3000]}
+HTML (full):
+{html[:5000]}
+
+Text content preview:
+{text_content[:1000]}
+
+YOUR TASK: Find REPEATING PATTERNS (3+ similar blocks with same structure but different content).
 
 CRITICAL RULES:
 1. start_marker and end_marker MUST be ACTUAL TEXT from HTML, NOT class names or tag names
@@ -451,14 +461,26 @@ CRITICAL RULES:
 3. For repeating blocks (3+ similar items), find the text that comes right before first item and right after last item
 4. "example" in fields MUST be EXACT text from HTML (copy-paste it)
 
-Example GOOD markers:
-- start_marker: "Ключевые показатели" (actual heading text)
-- end_marker: "Почему это важно" (text after stats section)
-- example: "73%" (exact number from HTML)
+LOOK FOR PATTERNS LIKE THIS:
+HTML has: 73% text1, 52% text2, 2.5x text3 (3 similar blocks!)
+→ This is a LOOP! Find text before "73%" and after "text3"
 
-Example BAD markers (NEVER do this):
-- start_marker: "stats-block h3" (class name - WRONG!)
-- end_marker: "/div" (tag - WRONG!)
+Example GOOD JSON:
+{{
+  "loops": [{{
+    "start_marker": "📊 Ключевые показатели",
+    "end_marker": "💡 Почему",
+    "variable_name": "stats",
+    "fields": [
+      {{"name": "percentage", "example": "73%"}},
+      {{"name": "description", "example": "компаний уже внедрили AI"}}
+    ]
+  }}]
+}}
+
+Example BAD (NEVER):
+- start_marker: "div class" ❌
+- example: "42" when HTML has "73%" ❌
 
 Return JSON:
 {{
