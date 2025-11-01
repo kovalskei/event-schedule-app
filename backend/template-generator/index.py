@@ -362,6 +362,8 @@ def apply_ai_instructions(html: str, instructions: Dict[str, Any]) -> Tuple[str,
     variables = {}
     slots_schema = {}
     
+    print(f"[DEBUG] Applying {len(instructions.get('loops', []))} loops, {len(instructions.get('variables', []))} variables")
+    
     # Шаг 1: Применяем циклы
     for loop in instructions.get('loops', []):
         start = loop.get('start_marker', '')
@@ -369,12 +371,17 @@ def apply_ai_instructions(html: str, instructions: Dict[str, Any]) -> Tuple[str,
         var_name = loop.get('variable_name', 'items')
         fields = loop.get('fields', [])
         
+        print(f"[DEBUG] Loop '{var_name}': looking for '{start[:30]}...'{end[:30]}'")
+        
         # Ищем блок между маркерами
         pattern = re.escape(start) + r'(.*?)' + re.escape(end)
         match = re.search(pattern, result, re.DOTALL)
         
         if not match:
+            print(f"[WARN] Loop '{var_name}': markers not found in HTML")
             continue
+        
+        print(f"[DEBUG] Loop '{var_name}': found block {len(match.group(1))} chars")
         
         block = match.group(1)
         
@@ -477,13 +484,17 @@ Rules:
     result = response.json()
     content = result['choices'][0]['message']['content'].strip()
     
+    print(f"[DEBUG] AI raw response: {content[:500]}")
+    
     # Extract JSON from markdown code blocks if present
     if '```json' in content:
         content = content.split('```json')[1].split('```')[0].strip()
     elif '```' in content:
         content = content.split('```')[1].split('```')[0].strip()
     
-    return json.loads(content)
+    parsed = json.loads(content)
+    print(f"[DEBUG] AI parsed JSON: {json.dumps(parsed, ensure_ascii=False)[:300]}")
+    return parsed
 
 def convert_to_template_ai(html: str, api_key: str) -> str:
     """
