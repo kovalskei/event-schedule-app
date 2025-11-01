@@ -167,8 +167,8 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
         counter['text'] += 1
         var_name = f"text_{counter['text']}"
         variables[var_name] = text
-        # Простая замена: >текст< → >{{var}}<
-        return f'>{{{{{{var_name}}}}}}<'
+        # Простая замена: >текст< → >{{text_1}}<
+        return f'>{{{{ {var_name} }}}}<'
     
     def replace_url(match):
         url = match.group(2).strip()
@@ -178,7 +178,7 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
         counter['url'] += 1
         var_name = f"url_{counter['url']}"
         variables[var_name] = url
-        return f'{match.group(1)}{{{{{{var_name}}}}}}{match.group(3)}'
+        return f'{match.group(1)}{{{{ {var_name} }}}}{match.group(3)}'
     
     def replace_img(match):
         src = match.group(2).strip()
@@ -188,7 +188,7 @@ def convert_to_template_regex(html: str) -> Tuple[str, Dict[str, str]]:
         counter['img'] += 1
         var_name = f"image_{counter['img']}"
         variables[var_name] = src
-        return f'{match.group(1)}{{{{{{var_name}}}}}}{match.group(3)}'
+        return f'{match.group(1)}{{{{ {var_name} }}}}{match.group(3)}'
     
     result = html
     
