@@ -139,32 +139,9 @@ def convert_to_template_ai(html: str, api_key: str) -> str:
     4. Верни ТОЛЬКО HTML, без объяснений
     """
     
-    prompt = f"""Transform this HTML email into a Mustache template by replacing ONLY dynamic content with variables.
+    prompt = f"""Convert HTML email to Mustache template. CRITICAL: Keep ALL styles (gradients, colors, fonts). Replace ONLY text/URLs with {{{{variables}}}}. Return ONLY HTML.
 
-CRITICAL RULES:
-1. PRESERVE 100% of HTML structure: all <style>, <table>, <tr>, <td>, <div> tags
-2. PRESERVE 100% of CSS: inline styles, <style> blocks, classes, gradients, colors, fonts
-3. PRESERVE 100% of layout: borders, padding, margin, background-color, box-shadow
-4. REPLACE only text content, URLs, and image sources with Mustache variables
-
-VARIABLE NAMING (use descriptive names):
-- Headings: {{{{intro_heading}}}}, {{{{stats_heading}}}}, {{{{benefits_heading}}}}
-- Text: {{{{intro_text}}}}, {{{{description}}}}, {{{{testimonial_text}}}}
-- Links: {{{{cta_url}}}}, {{{{cta_text}}}}, {{{{secondary_cta_text}}}}
-- Images: {{{{hero_image_url}}}}, {{{{logo_url}}}}, {{{{speaker_photo}}}}
-- Numbers/Stats: {{{{stat_1_value}}}}, {{{{stat_1_label}}}}, {{{{stat_2_value}}}}
-- Repeating blocks: {{{{#benefits}}}}...{{{{icon}}}}, {{{{title}}}}, {{{{description}}}}...{{{{/benefits}}}}
-
-EXAMPLES OF WHAT TO REPLACE:
-❌ DON'T touch: style="color: #667eea; font-size: 24px; background: linear-gradient(...)"
-✅ DO replace: <h1>Революция в подборе</h1> → <h1>{{{{intro_heading}}}}</h1>
-✅ DO replace: <a href="https://example.com/cta">Узнать больше</a> → <a href="{{{{cta_url}}}}">{{{{cta_text}}}}</a>
-✅ DO replace: <img src="hero.jpg"> → <img src="{{{{hero_image_url}}}}">
-
-OUTPUT FORMAT:
-Return ONLY the HTML code, no markdown blocks, no explanations, no comments.
-
-HTML TO TRANSFORM:
+HTML:
 {html}"""
 
     try:
@@ -180,7 +157,7 @@ HTML TO TRANSFORM:
                 'max_tokens': 16000,
                 'temperature': 0.3
             },
-            timeout=90
+            timeout=120
         )
         
         if response.status_code != 200:
