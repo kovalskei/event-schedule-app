@@ -271,6 +271,41 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'rows': rows, 'total': len(rows)})
                 }
             
+            elif action == 'list_drafts':
+                event_id = params.get('event_id', '')
+                
+                if not event_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id required'})
+                    }
+                
+                cur.execute('''
+                    SELECT id, subject, html_content, created_at, status, pipeline_version
+                    FROM t_p22819116_event_schedule_app.generated_emails
+                    WHERE input_params->>'event_id' = %s AND status = 'draft'
+                    ORDER BY created_at DESC
+                ''', (event_id,))
+                
+                drafts = cur.fetchall()
+                drafts_list = []
+                for draft in drafts:
+                    drafts_list.append({
+                        'id': draft[0],
+                        'subject': draft[1],
+                        'html_content': draft[2],
+                        'created_at': draft[3],
+                        'status': draft[4],
+                        'pipeline_version': draft[5]
+                    })
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'drafts': drafts_list}, default=str)
+                }
+            
             else:
                 return {
                     'statusCode': 400,

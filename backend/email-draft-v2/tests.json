@@ -1,0 +1,30 @@
+{
+  "tests": [
+    {
+      "name": "Missing event_id",
+      "method": "POST",
+      "body": {
+        "content_type_id": 1
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Generate draft successfully",
+      "method": "POST",
+      "body": {
+        "event_id": 2,
+        "content_type_id": 9,
+        "theme": "Адаптация и мотивация сотрудников"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

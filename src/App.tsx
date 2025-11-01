@@ -11,6 +11,7 @@ import AISettings from "./pages/AISettings";
 import EventsManager from "./pages/EventsManager";
 import TemplateTest from "./pages/TemplateTest";
 import EmailGeneratorTest from "./pages/EmailGeneratorTest";
+import DraftsManager from "./pages/DraftsManager";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
           <Route path="/dashboard" element={<Index />} />
           <Route path="/template-test" element={<TemplateTest />} />
           <Route path="/email-test" element={<EmailGeneratorTest />} />
+          <Route path="/drafts" element={<DraftsManager />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
