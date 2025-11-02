@@ -58,6 +58,17 @@ interface AnalyzedVariable {
   is_required: boolean;
 }
 
+interface SemanticBlock {
+  block_type: string;
+  block_name: string;
+  html_content: string;
+  block_order: number;
+  knowledge_source: string;
+  generation_instructions: string;
+  example_content: string;
+  data_schema: Record<string, any>;
+}
+
 const TemplateTest = () => {
   const [originalHTML, setOriginalHTML] = useState('');
   const [convertedHTML, setConvertedHTML] = useState('');
@@ -68,6 +79,8 @@ const TemplateTest = () => {
   const [mode, setMode] = useState<'regex' | 'hybrid' | 'legacy'>('regex');
   const [analyzedVariables, setAnalyzedVariables] = useState<AnalyzedVariable[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
+  const [semanticBlocks, setSemanticBlocks] = useState<SemanticBlock[]>([]);
+  const [analyzingSemantic, setAnalyzingSemantic] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -119,6 +132,32 @@ const TemplateTest = () => {
       console.error('Analysis error:', error);
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeSemantic = async () => {
+    if (!originalHTML) return;
+
+    setAnalyzingSemantic(true);
+    try {
+      const response = await fetch('https://functions.poehali.dev/43abb32b-2387-4899-8e13-85b90879ce0c', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html_content: originalHTML })
+      });
+
+      if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      setSemanticBlocks(data.blocks || []);
+      alert(`✅ Найдено ${data.blocks_count} семантических блоков!`);
+    } catch (error: any) {
+      alert(`Ошибка семантического анализа: ${error.message}`);
+      console.error('Semantic analysis error:', error);
+    } finally {
+      setAnalyzingSemantic(false);
     }
   };
 
@@ -227,12 +266,21 @@ const TemplateTest = () => {
           </div>
 
           <button
+            onClick={handleAnalyzeSemantic}
+            disabled={analyzingSemantic || !originalHTML}
+            className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Icon name="Blocks" size={20} />
+            {analyzingSemantic ? '🧩 Анализирую блоки...' : '🧩 Семантический анализ'}
+          </button>
+
+          <button
             onClick={handleAnalyzeVariables}
             disabled={analyzing || !originalHTML}
             className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             <Icon name="Sparkles" size={20} />
-            {analyzing ? '🔍 Анализирую...' : '🧠 Найти переменные'}
+            {analyzing ? '🔍 Анализирую...' : '🧠 Найти переменные (старый)'}
           </button>
 
           <button
@@ -287,7 +335,71 @@ const TemplateTest = () => {
             </div>
 
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold">✨ Преобразованный Mustache</h2>
+              <h2 className="text-xl font-semibold">✨ Результаты анализа</h2>
+              
+              {semanticBlocks.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="bg-gradient-to-r from-purple-500 to-indigo-600 px-4 py-3 border-b border-gray-200">
+                    <span className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Icon name="Blocks" size={16} />
+                      🧩 Семантические блоки ({semanticBlocks.length})
+                    </span>
+                  </div>
+                  <div className="p-4 overflow-auto max-h-[600px]">
+                    <div className="space-y-4">
+                      {semanticBlocks.map((block, idx) => (
+                        <div key={idx} className="border-2 border-purple-200 rounded-lg p-4 hover:border-purple-400 transition-colors bg-gradient-to-br from-purple-50 to-indigo-50">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <code className="text-sm font-mono bg-purple-100 text-purple-700 px-3 py-1 rounded-lg font-bold">
+                                  {block.block_name}
+                                </code>
+                                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-semibold">
+                                  {block.block_type}
+                                </span>
+                              </div>
+                              
+                              <div className="mb-3">
+                                <p className="text-xs text-gray-600 font-medium mb-1">📚 Источники данных:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {block.knowledge_source.split(',').map((src, i) => (
+                                    <span key={i} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                      {src.trim()}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="mb-3 p-3 bg-white rounded border border-gray-200">
+                                <p className="text-xs text-gray-500 font-medium mb-1">💡 Инструкции для ИИ:</p>
+                                <p className="text-xs text-gray-700">{block.generation_instructions}</p>
+                              </div>
+
+                              <div className="mb-3">
+                                <p className="text-xs text-gray-500 font-medium mb-1">📄 Пример контента:</p>
+                                <p className="text-xs text-gray-600 italic bg-white p-2 rounded border border-gray-200">
+                                  {block.example_content.substring(0, 150)}
+                                  {block.example_content.length > 150 && '...'}
+                                </p>
+                              </div>
+
+                              <details className="text-xs">
+                                <summary className="cursor-pointer text-purple-600 font-medium hover:text-purple-800">
+                                  📋 Схема данных (JSON)
+                                </summary>
+                                <pre className="mt-2 bg-gray-900 text-green-400 p-3 rounded overflow-auto text-xs">
+                                  {JSON.stringify(block.data_schema, null, 2)}
+                                </pre>
+                              </details>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               
               {convertedHTML ? (
                 <>

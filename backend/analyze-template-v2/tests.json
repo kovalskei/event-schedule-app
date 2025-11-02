@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "name": "Test analyze HTML with speakers section",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "html_content": "<h1>Приглашаем на конференцию HR Tech</h1><p>Надоело тратить месяцы на найм? Мы поможем!</p><div><h2>Наши эксперты</h2><div><h3>Иван Петров</h3><p>Директор по персоналу, Яндекс</p><p>Тема: ИИ в рекрутинге</p></div><div><h3>Мария Сидорова</h3><p>HR Tech Lead, Ozon</p><p>Тема: Автоматизация HR процессов</p></div></div><table><tr><td>10:00</td><td>Открытие конференции</td></tr><tr><td>11:00</td><td>Панельная дискуссия</td></tr></table><a href='#'>Зарегистрироваться сейчас</a>"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "blocks_count": "number",
+        "blocks": "array"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test missing html_content",
+      "method": "POST",
+      "path": "/",
+      "body": {},
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}
