@@ -201,6 +201,32 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }, default=str)
                 }
             
+            elif action == 'get_templates':
+                event_id = params.get('event_id', '')
+                
+                if not event_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id required'})
+                    }
+                
+                cur.execute('''
+                    SELECT et.id, et.name, et.content_type_id, et.html_template, et.original_html,
+                           ct.name as content_type_name
+                    FROM t_p22819116_event_schedule_app.email_templates et
+                    JOIN t_p22819116_event_schedule_app.content_types ct ON et.content_type_id = ct.id
+                    WHERE et.event_id = %s
+                    ORDER BY ct.name, et.name
+                ''', (event_id,))
+                templates = cur.fetchall()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'templates': [dict(t) for t in templates]}, default=str)
+                }
+            
             elif action == 'get_drafts':
                 event_list_id = params.get('event_list_id', '')
                 

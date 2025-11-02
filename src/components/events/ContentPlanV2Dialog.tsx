@@ -68,8 +68,12 @@ export default function ContentPlanV2Dialog({ open, onOpenChange, event, mailing
     try {
       const response = await fetch(`${EVENTS_MANAGER_URL}?action=get_templates&event_id=${event.id}`);
       const data = await response.json();
+      console.log('[ContentPlanV2] Templates response:', data);
       if (response.ok && data.templates) {
         setTemplates(data.templates);
+        console.log('[ContentPlanV2] Loaded templates:', data.templates);
+      } else {
+        console.warn('[ContentPlanV2] No templates found or error:', data);
       }
     } catch (error) {
       console.error('[ContentPlanV2] Load templates error:', error);
@@ -136,15 +140,21 @@ export default function ContentPlanV2Dialog({ open, onOpenChange, event, mailing
 
         try {
           // Найти подходящий шаблон для типа контента
+          console.log(`[V2] Processing: ${item.theme}, type: ${item.content_type}`);
+          console.log('[V2] Available content types:', contentTypes.map(ct => ct.name));
+          console.log('[V2] Available templates:', templates);
+          
           const contentType = contentTypes.find(ct => ct.name === item.content_type);
           if (!contentType) {
-            throw new Error(`Тип контента "${item.content_type}" не найден`);
+            throw new Error(`Тип контента "${item.content_type}" не найден. Доступны: ${contentTypes.map(ct => ct.name).join(', ')}`);
           }
 
           const template = templates.find(t => t.content_type_id === contentType.id);
           if (!template) {
-            throw new Error(`Шаблон для типа "${item.content_type}" не найден`);
+            throw new Error(`Шаблон для типа "${item.content_type}" (id: ${contentType.id}) не найден. Доступные шаблоны: ${templates.map(t => `${t.name} (type_id: ${t.content_type_id})`).join(', ')}`);
           }
+          
+          console.log(`[V2] Using template: ${template.name} (id: ${template.id})`);
 
           // Генерируем через новый бэкенд /generate-email
           const generateResponse = await fetch(GENERATE_EMAIL_URL, {
