@@ -837,17 +837,6 @@ export default function EventSettingsDialog({
                 </div>
 
                 <div>
-                  <Label htmlFor="email_template_examples">Примеры шаблонов</Label>
-                  <Textarea
-                    id="email_template_examples"
-                    value={event.email_template_examples || ''}
-                    onChange={(e) => setEvent({ ...event, email_template_examples: e.target.value })}
-                    rows={5}
-                    placeholder="Примеры успешных писем, референсы дизайна..."
-                  />
-                </div>
-
-                <div>
                   <Label htmlFor="cta_base_url">Базовая CTA ссылка</Label>
                   <Input
                     id="cta_base_url"
