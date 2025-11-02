@@ -195,6 +195,10 @@ export default function ContentPlanDialog({ open, onOpenChange, event, mailingLi
               skippedCount++;
             } else {
               successCount++;
+              // Логируем маркетинговую оценку если есть
+              if (data.marketing_score) {
+                console.log(`[MARKETING] ${item.title}: ${data.marketing_score}/10 - ${data.marketing_notes}`);
+              }
             }
           }
         } catch (itemError) {

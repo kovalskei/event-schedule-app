@@ -1417,7 +1417,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    SELECT html_template, subject_template, instructions
+                    SELECT html_template, subject_template, instructions, manual_variables
                     FROM email_templates
                     WHERE event_id = %s AND content_type_id = %s
                     LIMIT 1
@@ -1433,6 +1433,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 instructions = template_row['instructions'] or ''
                 html_template = template_row['html_template'] or ''
+                manual_variables = template_row.get('manual_variables') or []
                 
                 cur.execute('''
                     SELECT ai_provider, ai_model, ai_assistant_id
@@ -1459,17 +1460,136 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'OPENROUTER_API_KEY or OPENAI_API_KEY not configured'})
                     }
                 
-                logo_instruction = ''
-                if logo_url:
-                    logo_instruction = f'\nВ шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
+                # Загружаем базу знаний мероприятия
+                cur.execute('''
+                    SELECT item_type, content FROM t_p22819116_event_schedule_app.knowledge_store
+                    WHERE event_id = %s
+                ''', (event_id,))
+                knowledge_items = cur.fetchall()
                 
-                date_info = ''
-                if event_date:
-                    date_info = f'\nДата проведения: {event_date}'
-                    if event_venue:
-                        date_info += f' | Место: {event_venue}'
+                # Формируем базу знаний по типам
+                knowledge_by_type = {}
+                for item in knowledge_items:
+                    item_type = item['item_type']
+                    if item_type not in knowledge_by_type:
+                        knowledge_by_type[item_type] = []
+                    knowledge_by_type[item_type].append(item['content'])
                 
-                prompt = f"""
+                # Если есть manual_variables, используем их для заполнения
+                if manual_variables and isinstance(manual_variables, list) and len(manual_variables) > 0:
+                    print(f'[MANUAL_VARS] Found {len(manual_variables)} variables')
+                    
+                    # Шаг 1: Заполняем каждую переменную через ИИ
+                    filled_variables = {}
+                    for var in manual_variables:
+                        var_name = var.get('name', '')
+                        var_description = var.get('description', '')
+                        var_source = var.get('source', 'user_input')
+                        
+                        print(f'[VAR] Processing {var_name} (source: {var_source})')
+                        
+                        # Формируем контекст для заполнения переменной
+                        var_prompt = f"""
+Тема письма: {title}
+Переменная: {var_name}
+Инструкция для заполнения: {var_description}
+
+База знаний мероприятия:
+{json.dumps(knowledge_by_type, ensure_ascii=False, indent=2)[:5000]}
+
+Программа мероприятия:
+{program_text[:3000]}
+
+Боли аудитории:
+{pain_text[:2000]}
+
+Дата мероприятия: {event_date if event_date else 'не указана'}
+Место: {event_venue if event_venue else 'не указано'}
+
+Заполни переменную "{var_name}" согласно инструкции. Верни ТОЛЬКО текст для подстановки, без JSON, без кавычек.
+"""
+                        
+                        var_payload = {
+                            'model': ai_model,
+                            'messages': [
+                                {'role': 'system', 'content': 'Ты - ассистент для заполнения переменных в email шаблонах. Возвращаешь только готовый текст для подстановки.'},
+                                {'role': 'user', 'content': var_prompt}
+                            ],
+                            'temperature': 0.7,
+                            'max_tokens': 1000
+                        }
+                        
+                        try:
+                            var_req = urllib.request.Request(
+                                api_url,
+                                data=json.dumps(var_payload).encode('utf-8'),
+                                headers={
+                                    'Content-Type': 'application/json',
+                                    'Authorization': f'Bearer {api_key}'
+                                }
+                            )
+                            
+                            with urllib.request.urlopen(var_req, timeout=30) as var_response:
+                                var_result = json.loads(var_response.read().decode('utf-8'))
+                                var_content = var_result['choices'][0]['message']['content'].strip()
+                                filled_variables[var_name] = var_content
+                                print(f'[VAR] Filled {var_name}: {var_content[:100]}...')
+                        except Exception as var_err:
+                            print(f'[VAR_ERROR] Failed to fill {var_name}: {var_err}')
+                            filled_variables[var_name] = var.get('content', '[ПУСТО]')
+                    
+                    # Шаг 2: Подставляем переменные в HTML шаблон
+                    final_html = html_template
+                    for var_name, var_value in filled_variables.items():
+                        final_html = final_html.replace(f'{{{{{var_name}}}}}', var_value)
+                    
+                    # Шаг 3: ИИ проверяет письмо с точки зрения маркетинга и может доработать
+                    review_prompt = f"""
+Тема письма: {title}
+Инструкции шаблона: {instructions}
+
+Готовое письмо (HTML):
+{final_html}
+
+ЗАДАЧИ:
+1. Проверь письмо с точки зрения маркетинга (понятность, призыв к действию, структура)
+2. Убедись что дата мероприятия ({event_date if event_date else 'указана в программе'}) присутствует
+3. Если нужны минимальные правки - внеси их (но сохрани стиль и структуру!)
+4. Если есть логотип, добавь его в шапку: <img src="{logo_url}" alt="Logo" style="max-width: 200px;"> (только если его нет)
+
+Верни JSON:
+{{
+  "subject": "Тема письма (можешь улучшить)",
+  "html": "<финальный HTML>",
+  "marketing_score": 8,
+  "notes": "Краткая оценка"
+}}
+"""
+                    
+                    request_payload = {
+                        'model': ai_model,
+                        'messages': [
+                            {'role': 'system', 'content': 'Ты - эксперт по email маркетингу. Проверяешь и улучшаешь готовые письма.'},
+                            {'role': 'user', 'content': review_prompt}
+                        ],
+                        'temperature': 0.7,
+                        'max_tokens': 4000
+                    }
+                else:
+                    # Старая логика: генерируем письмо с нуля
+                    print('[OLD_LOGIC] No manual_variables, generating from scratch')
+                    
+                    logo_instruction = ''
+                    if logo_url:
+                        logo_instruction = f'\nВ шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
+                    
+                    date_info = ''
+                    if event_date:
+                        date_info = f'\nДата проведения: {event_date}'
+                        if event_venue:
+                            date_info += f' | Место: {event_venue}'
+                    
+                    prompt = f"""
 Тема письма: {title}
 Инструкции для генерации: {instructions}{date_info}
 
@@ -1490,16 +1610,16 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
   "html": "<html>...</html>"
 }}
 """
-                
-                request_payload = {
-                    'model': ai_model,
-                    'messages': [
-                        {'role': 'system', 'content': 'Ты - эксперт по email маркетингу. Создаёшь продающие письма.'},
-                        {'role': 'user', 'content': prompt}
-                    ],
-                    'temperature': 0.8,
-                    'max_tokens': 4000
-                }
+                    
+                    request_payload = {
+                        'model': ai_model,
+                        'messages': [
+                            {'role': 'system', 'content': 'Ты - эксперт по email маркетингу. Создаёшь продающие письма.'},
+                            {'role': 'user', 'content': prompt}
+                        ],
+                        'temperature': 0.8,
+                        'max_tokens': 4000
+                    }
                 
                 try:
                     req = urllib.request.Request(
@@ -1533,6 +1653,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         
                         final_subject = email_data.get('subject', title)
                         final_html = email_data.get('html', '')
+                        marketing_score = email_data.get('marketing_score', None)
+                        notes = email_data.get('notes', '')
+                        
+                        # Логируем маркетинговую оценку
+                        if marketing_score:
+                            print(f'[MARKETING] Score: {marketing_score}/10, Notes: {notes}')
                         
                         cur.execute('''
                             INSERT INTO generated_emails (
@@ -1554,10 +1680,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         email_id = cur.fetchone()['id']
                         conn.commit()
                         
+                        response_body = {
+                            'success': True, 
+                            'email_id': email_id, 
+                            'subject': final_subject
+                        }
+                        
+                        if marketing_score:
+                            response_body['marketing_score'] = marketing_score
+                            response_body['marketing_notes'] = notes
+                        
                         return {
                             'statusCode': 200,
                             'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                            'body': json.dumps({'success': True, 'email_id': email_id, 'subject': final_subject})
+                            'body': json.dumps(response_body)
                         }
                 
                 except Exception as e:
