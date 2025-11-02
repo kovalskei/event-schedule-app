@@ -1761,7 +1761,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 try:
                     cur.execute('''
                         INSERT INTO t_p22819116_event_schedule_app.generated_emails 
-                        (event_list_id, content_type_id, subject, html_body, status, metadata, created_at)
+                        (event_list_id, content_type_id, subject, html_body, status, input_params, created_at)
                         VALUES (%s, %s, %s, %s, 'draft', %s, NOW())
                         RETURNING id
                     ''', (event_list_id, content_type_id, subject, html_content, json.dumps(metadata)))
