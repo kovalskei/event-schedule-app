@@ -1176,7 +1176,6 @@ export default function EventSettingsDialog({
                           </Button>
                         )}
                       </div>
-                  </>
                     
                     <div>
                       <Label htmlFor="template_content_type">Тип контента</Label>
@@ -1307,7 +1306,8 @@ export default function EventSettingsDialog({
                         </>
                       )}
                     </div>
-                  </div>
+                    </div>
+                  </>
                 ) : (
                   <div className="border-t pt-4 text-center text-gray-500">
                     Сначала создайте типы контента
