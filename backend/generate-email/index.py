@@ -85,7 +85,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             template_html = template_row[0]
             slots_schema = template_row[1] or {}
-            original_html = template_row[2] or template_html
+            original_html = template_row[2]
+            
+            # Если html_template пустой, используем original_html
+            if not template_html:
+                if not original_html:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': f'Template {template_id} has no HTML content'})
+                    }
+                template_html = original_html
+            
+            # Fallback для original_html
+            if not original_html:
+                original_html = template_html
             
             # 2. Получаем знания из базы
             cur.execute(
