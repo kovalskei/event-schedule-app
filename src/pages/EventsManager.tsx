@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Link } from 'react-router-dom';
 import Icon from '@/components/ui/icon';
 import EventCard from '@/components/events/EventCard';
 import CreateEventDialog from '@/components/events/CreateEventDialog';
@@ -287,20 +286,15 @@ export default function EventsManager() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+    <div className="p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 mb-2">
-              Управление мероприятиями
-            </h1>
-            <p className="text-gray-600">
-              Создавайте мероприятия, привязывайте списки рассылки и настраивайте UTM-метки
-            </p>
-          </div>
-          <Link to="/campaigns">
-            <Icon name="ArrowRight" className="w-6 h-6" />
-          </Link>
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+            Управление мероприятиями
+          </h1>
+          <p className="text-gray-600">
+            Создавайте мероприятия, привязывайте списки рассылки и настраивайте UTM-метки
+          </p>
         </div>
 
         {selectedEvent ? (
