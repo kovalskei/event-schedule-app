@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "Generate email from template",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "template_id": 152,
+        "topic": "Конференция по AI и автоматизации HR",
+        "knowledge_context": "Спикеры: Иван Петров (Яндекс), Мария Сидорова (Ozon)"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
