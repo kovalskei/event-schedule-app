@@ -117,9 +117,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         e.*,
                         COUNT(DISTINCT eml.id) as lists_count,
                         COUNT(DISTINCT c.id) as campaigns_count
-                    FROM events e
-                    LEFT JOIN event_mailing_lists eml ON eml.event_id = e.id
-                    LEFT JOIN campaigns c ON c.event_id = e.id
+                    FROM t_p22819116_event_schedule_app.events e
+                    LEFT JOIN t_p22819116_event_schedule_app.event_mailing_lists eml ON eml.event_id = e.id
+                    LEFT JOIN t_p22819116_event_schedule_app.campaigns c ON c.event_id = e.id
                     GROUP BY e.id
                     ORDER BY e.start_date DESC
                 ''')
@@ -156,8 +156,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     SELECT 
                         eml.*,
                         COUNT(ge.id) as drafts_count
-                    FROM event_mailing_lists eml
-                    LEFT JOIN generated_emails ge ON ge.event_list_id = eml.id AND ge.status = 'draft'
+                    FROM t_p22819116_event_schedule_app.event_mailing_lists eml
+                    LEFT JOIN t_p22819116_event_schedule_app.generated_emails ge ON ge.event_list_id = eml.id AND ge.status = 'draft'
                     WHERE eml.event_id = %s 
                     GROUP BY eml.id
                     ORDER BY eml.created_at DESC
@@ -165,7 +165,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 lists = cur.fetchall()
                 
                 cur.execute('''
-                    SELECT * FROM content_types
+                    SELECT * FROM t_p22819116_event_schedule_app.content_types
                     WHERE event_id = %s
                     ORDER BY name
                 ''', (event_id,))
@@ -173,8 +173,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 cur.execute('''
                     SELECT et.*, ct.name as content_type_name
-                    FROM email_templates et
-                    JOIN content_types ct ON et.content_type_id = ct.id
+                    FROM t_p22819116_event_schedule_app.email_templates et
+                    JOIN t_p22819116_event_schedule_app.content_types ct ON et.content_type_id = ct.id
                     WHERE et.event_id = %s
                     ORDER BY ct.name, et.name
                 ''', (event_id,))
@@ -182,8 +182,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 cur.execute('''
                     SELECT cp.*, ct.name as content_type_name
-                    FROM content_plan cp
-                    JOIN content_types ct ON cp.content_type_id = ct.id
+                    FROM t_p22819116_event_schedule_app.content_plan cp
+                    JOIN t_p22819116_event_schedule_app.content_types ct ON cp.content_type_id = ct.id
                     WHERE cp.event_id = %s
                     ORDER BY cp.scheduled_date, cp.created_at
                 ''', (event_id,))
@@ -242,9 +242,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         ge.*,
                         ct.name as content_type_name,
                         ct.description as content_type_description
-                    FROM generated_emails ge
-                    LEFT JOIN campaigns c ON c.id = ge.campaign_id
-                    LEFT JOIN content_types ct ON ct.id = c.mailing_list_id
+                    FROM t_p22819116_event_schedule_app.generated_emails ge
+                    LEFT JOIN t_p22819116_event_schedule_app.campaigns c ON c.id = ge.campaign_id
+                    LEFT JOIN t_p22819116_event_schedule_app.content_types ct ON ct.id = c.mailing_list_id
                     WHERE ge.event_list_id = %s
                     ORDER BY ge.created_at DESC
                 ''', (event_list_id,))
@@ -357,7 +357,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    INSERT INTO event_mailing_lists 
+                    INSERT INTO t_p22819116_event_schedule_app.event_mailing_lists 
                     (event_id, unisender_list_id, unisender_list_name, utm_source, utm_medium, utm_campaign, utm_term, utm_content)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
@@ -389,7 +389,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 filtered_cta = [cta for cta in cta_urls if cta.get('label') or cta.get('url')]
                 
                 cur.execute('''
-                    INSERT INTO content_types (event_id, name, description, cta_urls)
+                    INSERT INTO t_p22819116_event_schedule_app.content_types (event_id, name, description, cta_urls)
                     VALUES (%s, %s, %s, %s)
                     RETURNING id
                 ''', (event_id, name, description, json.dumps(filtered_cta)))
@@ -420,7 +420,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 filtered_cta = [cta for cta in cta_urls if cta.get('label') or cta.get('url')]
                 
                 cur.execute('''
-                    UPDATE content_types SET
+                    UPDATE t_p22819116_event_schedule_app.content_types SET
                         name = %s,
                         description = %s,
                         cta_urls = %s
@@ -451,7 +451,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    INSERT INTO email_templates (event_id, content_type_id, name, html_template, subject_template, instructions)
+                    INSERT INTO t_p22819116_event_schedule_app.email_templates (event_id, content_type_id, name, html_template, subject_template, instructions)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING id
                 ''', (event_id, content_type_id, name, html_template, subject_template, instructions))
@@ -478,7 +478,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    UPDATE email_templates 
+                    UPDATE t_p22819116_event_schedule_app.email_templates 
                     SET event_id = %s, content_type_id = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                     RETURNING id
@@ -510,7 +510,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'template_id required'})
                     }
                 
-                cur.execute('DELETE FROM email_templates WHERE id = %s', (template_id,))
+                cur.execute('DELETE FROM t_p22819116_event_schedule_app.email_templates WHERE id = %s', (template_id,))
                 conn.commit()
                 
                 return {
@@ -535,7 +535,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    UPDATE email_templates SET
+                    UPDATE t_p22819116_event_schedule_app.email_templates SET
                         content_type_id = %s,
                         name = %s,
                         html_template = %s,
@@ -577,7 +577,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    UPDATE event_mailing_lists SET
+                    UPDATE t_p22819116_event_schedule_app.event_mailing_lists SET
                         content_type_ids = %s,
                         content_type_order = %s,
                         ai_provider = %s,
@@ -617,10 +617,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 # Delete drafts first
-                cur.execute('DELETE FROM email_drafts WHERE mailing_list_id = %s', (list_id,))
+                cur.execute('DELETE FROM t_p22819116_event_schedule_app.email_drafts WHERE mailing_list_id = %s', (list_id,))
                 
                 # Delete mailing list
-                cur.execute('DELETE FROM event_mailing_lists WHERE id = %s', (list_id,))
+                cur.execute('DELETE FROM t_p22819116_event_schedule_app.event_mailing_lists WHERE id = %s', (list_id,))
                 
                 conn.commit()
                 
@@ -649,7 +649,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     
                     if content_type_id and topic:
                         cur.execute('''
-                            INSERT INTO content_plan (event_id, content_type_id, topic, scheduled_date)
+                            INSERT INTO t_p22819116_event_schedule_app.content_plan (event_id, content_type_id, topic, scheduled_date)
                             VALUES (%s, %s, %s, %s)
                         ''', (event_id, content_type_id, topic, scheduled_date))
                         imported_count += 1
@@ -678,8 +678,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         e.program_doc_id,
                         e.pain_doc_id,
                         e.default_tone
-                    FROM event_mailing_lists eml
-                    JOIN events e ON e.id = eml.event_id
+                    FROM t_p22819116_event_schedule_app.event_mailing_lists eml
+                    JOIN t_p22819116_event_schedule_app.events e ON e.id = eml.event_id
                     WHERE eml.id = %s
                 ''', (list_id,))
                 
@@ -750,7 +750,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 for content_type_id in content_type_ids:
                     cur.execute('''
                         SELECT html_template, subject_template, instructions, name
-                        FROM email_templates
+                        FROM t_p22819116_event_schedule_app.email_templates
                         WHERE event_id = %s AND content_type_id = %s
                         LIMIT 1
                     ''', (event_id, content_type_id))
@@ -851,7 +851,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                     
                     cur.execute('''
-                        INSERT INTO generated_emails (
+                        INSERT INTO t_p22819116_event_schedule_app.generated_emails (
                             event_list_id,
                             content_type_id,
                             subject,
@@ -905,7 +905,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         continue
                     
                     cur.execute('''
-                        INSERT INTO content_types (event_id, name, description)
+                        INSERT INTO t_p22819116_event_schedule_app.content_types (event_id, name, description)
                         VALUES (%s, %s, %s)
                         RETURNING id
                     ''', (event_id, name.strip(), f'Автоматически создан из контент-плана'))
@@ -913,7 +913,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     content_type_id = cur.fetchone()['id']
                     
                     cur.execute('''
-                        INSERT INTO email_templates (
+                        INSERT INTO t_p22819116_event_schedule_app.email_templates (
                             event_id, 
                             content_type_id, 
                             name, 
@@ -954,7 +954,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 print(f'[CONTENT_PLAN] Starting generation for event={event_id}, list={event_list_id}')
                 
-                cur.execute('SELECT * FROM events WHERE id = %s', (event_id,))
+                cur.execute('SELECT * FROM t_p22819116_event_schedule_app.events WHERE id = %s', (event_id,))
                 evt = cur.fetchone()
                 
                 if not evt:
@@ -991,7 +991,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 print(f'[DEBUG] Reading content plan from: {content_plan_doc_id}')
                 content_plan_text = read_google_doc(content_plan_doc_id)
                 
-                cur.execute('SELECT * FROM content_types WHERE event_id = %s', (event_id,))
+                cur.execute('SELECT * FROM t_p22819116_event_schedule_app.content_types WHERE event_id = %s', (event_id,))
                 content_types_list = cur.fetchall()
                 content_type_map = {ct['name']: ct['id'] for ct in content_types_list}
                 
@@ -1033,7 +1033,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 cur.execute('''
                     SELECT ai_provider, ai_model, ai_assistant_id
-                    FROM event_mailing_lists
+                    FROM t_p22819116_event_schedule_app.event_mailing_lists
                     WHERE id = %s
                 ''', (event_list_id,))
                 
@@ -1072,7 +1072,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     
                     # Проверка на дубли: если письмо с таким заголовком уже существует
                     cur.execute('''
-                        SELECT COUNT(*) as count FROM generated_emails
+                        SELECT COUNT(*) as count FROM t_p22819116_event_schedule_app.generated_emails
                         WHERE event_list_id = %s AND subject = %s
                     ''', (event_list_id, title))
                     existing = cur.fetchone()
@@ -1084,7 +1084,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     
                     cur.execute('''
                         SELECT html_template, subject_template, instructions
-                        FROM email_templates
+                        FROM t_p22819116_event_schedule_app.email_templates
                         WHERE event_id = %s AND content_type_id = %s
                         LIMIT 1
                     ''', (event_id, content_type_id))
@@ -1112,7 +1112,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         logo_instruction = f'\n   - В шапке письма добавь логотип: <img src="{logo_url}" alt="Logo" style="max-width: 200px; height: auto; margin-bottom: 20px;">'
                     
                     cta_instruction = ''
-                    cur.execute('SELECT cta_urls FROM content_types WHERE id = %s', (content_type_id,))
+                    cur.execute('SELECT cta_urls FROM t_p22819116_event_schedule_app.content_types WHERE id = %s', (content_type_id,))
                     ct_cta = cur.fetchone()
                     if ct_cta and ct_cta.get('cta_urls'):
                         cta_list = ct_cta['cta_urls'] if isinstance(ct_cta['cta_urls'], list) else json.loads(ct_cta['cta_urls']) if ct_cta['cta_urls'] else []
@@ -1236,7 +1236,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             # Получаем UTM параметры для всех ссылок
                             cur.execute('''
                                 SELECT utm_source, utm_medium, utm_campaign
-                                FROM event_mailing_lists
+                                FROM t_p22819116_event_schedule_app.event_mailing_lists
                                 WHERE id = %s
                             ''', (event_list_id,))
                             utm_data = cur.fetchone()
@@ -1250,7 +1250,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 utm_params.append(f"utm_campaign={urllib.parse.quote(utm_data['utm_campaign'])}")
                             
                             # Добавляем utm_content = название типа контента
-                            cur.execute('SELECT name, cta_urls FROM content_types WHERE id = %s', (content_type_id,))
+                            cur.execute('SELECT name, cta_urls FROM t_p22819116_event_schedule_app.content_types WHERE id = %s', (content_type_id,))
                             ct_row = cur.fetchone()
                             if ct_row:
                                 utm_params.append(f"utm_content={urllib.parse.quote(ct_row['name'])}")
@@ -1322,7 +1322,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                                 print(f'[UTM] Used fallback cta_base_url from event settings')
                             
                             cur.execute('''
-                                INSERT INTO generated_emails (
+                                INSERT INTO t_p22819116_event_schedule_app.generated_emails (
                                     event_list_id,
                                     content_type_id,
                                     subject,
@@ -1407,7 +1407,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     except Exception as e:
                         print(f'[DEBUG] Failed to read Meta sheet: {e}')
                 
-                cur.execute('SELECT id FROM content_types WHERE event_id = %s AND name = %s', (event_id, content_type_name))
+                cur.execute('SELECT id FROM t_p22819116_event_schedule_app.content_types WHERE event_id = %s AND name = %s', (event_id, content_type_name))
                 content_type_row = cur.fetchone()
                 
                 if not content_type_row:
@@ -1421,7 +1421,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 # Проверяем, есть ли уже черновик для этого title + content_type
                 cur.execute('''
-                    SELECT id FROM generated_emails
+                    SELECT id FROM t_p22819116_event_schedule_app.generated_emails
                     WHERE event_list_id = %s 
                       AND content_type_id = %s 
                       AND subject = %s 
@@ -1444,7 +1444,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 cur.execute('''
                     SELECT html_template, subject_template, instructions, manual_variables, original_html
-                    FROM email_templates
+                    FROM t_p22819116_event_schedule_app.email_templates
                     WHERE event_id = %s AND content_type_id = %s
                     LIMIT 1
                 ''', (event_id, content_type_id))
@@ -1464,7 +1464,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 cur.execute('''
                     SELECT ai_provider, ai_model, ai_assistant_id
-                    FROM event_mailing_lists
+                    FROM t_p22819116_event_schedule_app.event_mailing_lists
                     WHERE id = %s
                 ''', (event_list_id,))
                 
@@ -1699,7 +1699,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             print(f'[MARKETING] Score: {marketing_score}/10, Notes: {notes}')
                         
                         cur.execute('''
-                            INSERT INTO generated_emails (
+                            INSERT INTO t_p22819116_event_schedule_app.generated_emails (
                                 event_list_id,
                                 content_type_id,
                                 subject,
@@ -1784,7 +1784,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 values.append(event_id)
-                query = f"UPDATE events SET {', '.join(update_fields)} WHERE id = %s"
+                query = f"UPDATE t_p22819116_event_schedule_app.events SET {', '.join(update_fields)} WHERE id = %s"
                 cur.execute(query, values)
                 conn.commit()
                 
@@ -1820,7 +1820,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 values.append(list_id)
-                query = f"UPDATE event_mailing_lists SET {', '.join(update_fields)} WHERE id = %s"
+                query = f"UPDATE t_p22819116_event_schedule_app.event_mailing_lists SET {', '.join(update_fields)} WHERE id = %s"
                 cur.execute(query, values)
                 conn.commit()
                 
@@ -1921,8 +1921,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     cur.execute('''
                         SELECT et.html_template, et.subject_template, et.instructions,
                                ct.name as content_type_name
-                        FROM email_templates et
-                        JOIN content_types ct ON et.content_type_id = ct.id
+                        FROM t_p22819116_event_schedule_app.email_templates et
+                        JOIN t_p22819116_event_schedule_app.content_types ct ON et.content_type_id = ct.id
                         WHERE et.event_id = %s AND et.content_type_id = %s
                     ''', (event_id, content_type_id))
                     
@@ -2034,7 +2034,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             generated_html = email_data.get('html', '<p>Ошибка генерации</p>')
                             
                             cur.execute('''
-                                INSERT INTO generated_emails 
+                                INSERT INTO t_p22819116_event_schedule_app.generated_emails 
                                 (event_list_id, content_type_id, subject, html_body, status)
                                 VALUES (%s, %s, %s, %s, %s)
                             ''', (
@@ -2050,7 +2050,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     except Exception as gen_error:
                         print(f'[ERROR] Failed to generate for {content_type_name}: {gen_error}')
                         cur.execute('''
-                            INSERT INTO generated_emails 
+                            INSERT INTO t_p22819116_event_schedule_app.generated_emails 
                             (event_list_id, content_type_id, subject, html_body, status)
                             VALUES (%s, %s, %s, %s, %s)
                         ''', (
@@ -2092,8 +2092,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         ge.status,
                         ge.created_at,
                         ct.name as content_type_name
-                    FROM generated_emails ge
-                    LEFT JOIN content_types ct ON ct.id = ge.content_type_id
+                    FROM t_p22819116_event_schedule_app.generated_emails ge
+                    LEFT JOIN t_p22819116_event_schedule_app.content_types ct ON ct.id = ge.content_type_id
                     WHERE ge.event_list_id = %s AND ge.status = 'draft'
                     ORDER BY ge.created_at DESC
                 ''', (list_id,))
@@ -2127,7 +2127,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'draft_id required'})
                     }
                 
-                cur.execute('DELETE FROM generated_emails WHERE id = %s', (draft_id,))
+                cur.execute('DELETE FROM t_p22819116_event_schedule_app.generated_emails WHERE id = %s', (draft_id,))
                 conn.commit()
                 
                 return {
@@ -2146,7 +2146,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': 'list_id required'})
                     }
                 
-                cur.execute('DELETE FROM generated_emails WHERE event_list_id = %s AND status = %s', (list_id, 'draft'))
+                cur.execute('DELETE FROM t_p22819116_event_schedule_app.generated_emails WHERE event_list_id = %s AND status = %s', (list_id, 'draft'))
                 deleted_count = cur.rowcount
                 conn.commit()
                 
