@@ -346,8 +346,12 @@ export default function EventSettingsDialog({
     });
     
     setTimeout(() => {
-      templateFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+      try {
+        templateFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {
+        console.warn('Scroll failed:', e);
+      }
+    }, 150);
   };
 
   const handleUpdateTemplate = async () => {
@@ -404,6 +408,25 @@ export default function EventSettingsDialog({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditTemplate = (template: EmailTemplate) => {
+    setEditingTemplate(template);
+    setNewTemplate({
+      content_type_id: template.content_type_id.toString(),
+      name: template.name,
+      html_template: template.html_template,
+      subject_template: template.subject_template,
+      instructions: template.instructions,
+    });
+    
+    setTimeout(() => {
+      try {
+        templateFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {
+        console.warn('Scroll failed:', e);
+      }
+    }, 150);
   };
 
   const handleCancelEdit = () => {
