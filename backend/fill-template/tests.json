@@ -1,0 +1,38 @@
+{
+  "tests": [
+    {
+      "name": "Test fill template success",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "template_id": 1,
+        "event_id": 1,
+        "theme": "Приглашение на вебинар"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test missing parameters",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "template_id": 999
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test OPTIONS CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}
