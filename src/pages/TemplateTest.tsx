@@ -49,6 +49,15 @@ const DEMO_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
+interface AnalyzedVariable {
+  name: string;
+  original_text: string;
+  suggested_type: string;
+  description: string;
+  default_value: string;
+  is_required: boolean;
+}
+
 const TemplateTest = () => {
   const [originalHTML, setOriginalHTML] = useState('');
   const [convertedHTML, setConvertedHTML] = useState('');
@@ -57,6 +66,8 @@ const TemplateTest = () => {
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState('');
   const [mode, setMode] = useState<'regex' | 'hybrid' | 'legacy'>('regex');
+  const [analyzedVariables, setAnalyzedVariables] = useState<AnalyzedVariable[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -75,6 +86,40 @@ const TemplateTest = () => {
       setConvertedHTML('');
     };
     reader.readAsText(file);
+  };
+
+  const handleAnalyzeVariables = async () => {
+    if (!originalHTML) return;
+
+    setAnalyzing(true);
+    try {
+      const response = await fetch('https://functions.poehali.dev/826203af-dede-46f0-89aa-b28b80ac3b03', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html_content: originalHTML })
+      });
+
+      if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      setConvertedHTML(data.template_html || '');
+      setAnalyzedVariables(data.variables || []);
+      
+      const varsObj: Record<string, string> = {};
+      data.variables?.forEach((v: AnalyzedVariable) => {
+        varsObj[v.name] = v.default_value;
+      });
+      setVariables(varsObj);
+
+      alert(`✅ Найдено ${data.variables_count} переменных!`);
+    } catch (error: any) {
+      alert(`Ошибка анализа: ${error.message}`);
+      console.error('Analysis error:', error);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
   const handleConvert = async () => {
@@ -182,11 +227,20 @@ const TemplateTest = () => {
           </div>
 
           <button
+            onClick={handleAnalyzeVariables}
+            disabled={analyzing || !originalHTML}
+            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Icon name="Sparkles" size={20} />
+            {analyzing ? '🔍 Анализирую...' : '🧠 Найти переменные'}
+          </button>
+
+          <button
             onClick={handleConvert}
             disabled={loading || !originalHTML}
             className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? '⏳ Преобразую...' : '⚡ Преобразовать'}
+            {loading ? '⏳ Преобразую...' : '⚡ Преобразовать (старый)'}
           </button>
           
           {loading && (
@@ -259,7 +313,48 @@ const TemplateTest = () => {
                     </div>
                   </div>
 
-                  {Object.keys(variables).length > 0 && (
+                  {analyzedVariables.length > 0 && (
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                      <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-4 py-3 border-b border-gray-200">
+                        <span className="text-sm font-semibold text-white flex items-center gap-2">
+                          <Icon name="Sparkles" size={16} />
+                          Найденные переменные ({analyzedVariables.length})
+                        </span>
+                      </div>
+                      <div className="p-4 overflow-auto max-h-[400px]">
+                        <div className="space-y-3">
+                          {analyzedVariables.map((variable, idx) => (
+                            <div key={idx} className="border border-gray-200 rounded-lg p-3 hover:border-emerald-400 transition-colors">
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <code className="text-sm font-mono bg-emerald-50 text-emerald-700 px-2 py-1 rounded">
+                                      {`{{${variable.name}}}`}
+                                    </code>
+                                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                      {variable.suggested_type}
+                                    </span>
+                                    {variable.is_required && (
+                                      <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-medium">
+                                        обязательно
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 mb-2">{variable.description}</p>
+                                  <div className="text-sm">
+                                    <span className="text-gray-400">Оригинал:</span>{' '}
+                                    <span className="text-gray-700 font-medium">{variable.original_text}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {Object.keys(variables).length > 0 && analyzedVariables.length === 0 && (
                     <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                       <div className="bg-gray-100 px-4 py-2 border-b border-gray-200">
                         <span className="text-sm font-medium text-gray-600">📋 Переменные ({Object.keys(variables).length})</span>
