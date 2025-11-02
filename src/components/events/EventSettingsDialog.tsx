@@ -351,26 +351,36 @@ export default function EventSettingsDialog({
   };
 
   const handleUpdateTemplate = async () => {
-    if (!editingTemplate || !eventId) return;
+    if (!editingTemplate || !eventId) {
+      console.log('❌ Cannot update: editingTemplate or eventId missing', { editingTemplate, eventId });
+      return;
+    }
 
+    console.log('🔄 Updating template:', { template_id: editingTemplate.id, newTemplate });
     setLoading(true);
     try {
+      const requestBody = {
+        action: 'update_email_template',
+        template_id: editingTemplate.id,
+        ...newTemplate,
+      };
+      console.log('📤 Request body:', requestBody);
+      
       const res = await fetch(EVENTS_MANAGER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'update_email_template',
-          template_id: editingTemplate.id,
-          ...newTemplate,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json();
+      console.log('📥 Response:', data);
 
       if (data.error) {
+        console.error('❌ Error from backend:', data.error);
         throw new Error(data.error);
       }
 
+      console.log('✅ Template updated successfully');
       toast({
         title: 'Шаблон обновлён',
         description: newTemplate.name,
