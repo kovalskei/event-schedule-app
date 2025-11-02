@@ -352,6 +352,12 @@ export default function CampaignManager() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Link to="/templates">
+              <Button variant="outline">
+                <Icon name="FileCode" className="w-4 h-4 mr-2" />
+                Шаблоны
+              </Button>
+            </Link>
             <Link to="/ai-settings">
               <Button variant="outline">
                 <Icon name="Settings" className="w-4 h-4 mr-2" />
