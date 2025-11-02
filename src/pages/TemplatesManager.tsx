@@ -197,6 +197,35 @@ export default function TemplatesManager() {
     setCurrentTemplateId(null);
   };
 
+  const loadTemplate = async (templateId: number) => {
+    setLoading(true);
+    try {
+      const response = await fetch('https://functions.poehali.dev/2e3f48d7-0bbc-4c24-983c-6de6f0e0c9b9', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_id: templateId }),
+      });
+
+      if (!response.ok) throw new Error('Ошибка загрузки шаблона');
+
+      const data = await response.json();
+      setCurrentTemplateId(data.id);
+      setTemplateName(data.name);
+      setTemplateDescription(data.description || '');
+      setHtmlContent(data.html_content);
+      setSavedVariables(data.manual_variables || []);
+      setView('create');
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка загрузки шаблона',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading && view === 'list') {
     return (
       <div className="p-8 flex items-center justify-center">
