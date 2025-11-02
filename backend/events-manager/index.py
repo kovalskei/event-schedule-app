@@ -1759,6 +1759,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 try:
+                    print(f'[DEBUG] Saving draft: list_id={event_list_id}, type_id={content_type_id}, subject={subject[:50]}...')
+                    
                     cur.execute('''
                         INSERT INTO t_p22819116_event_schedule_app.generated_emails 
                         (event_list_id, content_type_id, subject, html_content, html_body, status, input_params, created_at)
@@ -1766,8 +1768,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         RETURNING id
                     ''', (event_list_id, content_type_id, subject, html_content, html_content, json.dumps(metadata)))
                     
-                    draft_id = cur.fetchone()[0]
+                    result = cur.fetchone()
+                    if not result:
+                        raise Exception('INSERT did not return id - check constraints and triggers')
+                    
+                    draft_id = result[0]
                     conn.commit()
+                    print(f'[DEBUG] Draft saved successfully: id={draft_id}')
                     
                     return {
                         'statusCode': 200,
@@ -1776,11 +1783,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 except Exception as e:
                     conn.rollback()
-                    print(f'[ERROR] Save draft failed: {str(e)}')
+                    error_msg = f'{type(e).__name__}: {str(e)}'
+                    print(f'[ERROR] Save draft failed: {error_msg}')
                     return {
                         'statusCode': 500,
                         'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                        'body': json.dumps({'error': f'Save failed: {str(e)[:200]}'})
+                        'body': json.dumps({'error': f'Save failed: {error_msg[:500]}'})
                     }
             
             else:
