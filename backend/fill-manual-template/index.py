@@ -47,6 +47,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     dsn = os.environ.get('DATABASE_URL')
     openai_key = os.environ.get('OPENAI_API_KEY')
     openrouter_key = os.environ.get('OPENROUTER_API_KEY')
+    https_proxy = os.environ.get('HTTPS_PROXY')
     
     if not dsn:
         return {
@@ -83,7 +84,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             manual_variables = row[1] or []
             template_name = row[2]
         
-        http_client = httpx.Client()
+        http_client = httpx.Client(
+            proxies=https_proxy if https_proxy else None
+        )
         
         if openrouter_key:
             client = OpenAI(
