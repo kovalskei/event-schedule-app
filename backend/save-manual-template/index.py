@@ -51,6 +51,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'DATABASE_URL not configured'})
         }
     
+    # Создаём шаблон с плейсхолдерами {{variable_name}}
+    html_template = html_content
+    
+    # Сортируем переменные по startIndex в обратном порядке (с конца)
+    sorted_vars = sorted(manual_variables, key=lambda v: v.get('startIndex', 0), reverse=True)
+    
+    for var in sorted_vars:
+        start = var.get('startIndex', 0)
+        end = var.get('endIndex', 0)
+        var_name = var.get('name', '')
+        
+        if start >= 0 and end > start and var_name:
+            # Заменяем выделенный текст на плейсхолдер
+            html_template = html_template[:start] + '{{' + var_name + '}}' + html_template[end:]
+    
+    print(f'[INFO] Created template with {len(manual_variables)} placeholders')
+    
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
@@ -62,8 +79,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 RETURNING id
             """, (
                 name,
-                html_content,
-                html_content,
+                html_template,  # Шаблон с {{плейсхолдерами}}
+                html_content,   # Оригинал с реальным текстом
                 json.dumps(manual_variables),
                 description or 'Вручную размеченный шаблон'
             ))
