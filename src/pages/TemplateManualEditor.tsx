@@ -177,24 +177,25 @@ export default function TemplateManualEditor() {
 
     setTestLoading(true);
     try {
-      const response = await fetch('https://functions.poehali.dev/a81b87a7-dd29-414f-bcf3-f2fda73c8c0f', {
+      const response = await fetch('https://functions.poehali.dev/d1b65152-b43b-4be4-8611-8ba8ea54d5c2', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           template_id: currentTemplateId,
-          event_name: 'Тестовая конференция по маркетингу',
+          topic: 'Анонс конференции по маркетингу: тренды 2025',
+          knowledge_context: 'Маркетинговое мероприятие для специалистов',
         }),
       });
 
       if (!response.ok) throw new Error('Ошибка генерации');
 
       const data = await response.json();
-      setPreviewHtml(data.filled_html);
+      setPreviewHtml(data.generated_html);
       setShowPreview(true);
       
       toast({
         title: '✅ Письмо сгенерировано',
-        description: `Использовано ${Object.keys(data.variables_used || {}).length} переменных`,
+        description: `Использовано ${Object.keys(data.variables_filled || {}).length} переменных`,
       });
     } catch (error: any) {
       toast({
