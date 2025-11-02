@@ -1,0 +1,41 @@
+{
+  "tests": [
+    {
+      "name": "Save template with variables",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "name": "Test Conference Template",
+        "description": "Test description",
+        "html_content": "<h1>Event Title</h1><p>Description here</p>",
+        "manual_variables": [
+          {
+            "id": "var_1",
+            "name": "event_title",
+            "description": "Название мероприятия",
+            "source": "knowledge_base",
+            "startIndex": 4,
+            "endIndex": 15,
+            "content": "Event Title"
+          }
+        ]
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "variables_count": 1
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Missing required field",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "description": "No name provided"
+      },
+      "expectedStatus": 400,
+      "bodyMatcher": "partial"
+    }
+  ]
+}
