@@ -155,6 +155,87 @@ export default function TemplateManualEditor() {
     setView('list');
   };
 
+  const handleAutoAnalyze = async () => {
+    if (!htmlContent) {
+      toast({
+        title: 'Ошибка',
+        description: 'Нет HTML для анализа',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('https://functions.poehali.dev/2a3fec21-8459-418c-a548-5bd1c9f2ff51', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          html_content: htmlContent,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Ошибка анализа');
+
+      const data = await response.json();
+      
+      // Преобразуем переменные в формат TemplateVariable
+      const autoVariables: TemplateVariable[] = data.variables.map((v: any, index: number) => ({
+        id: `auto_${Date.now()}_${index}`,
+        name: v.name,
+        description: v.description,
+        source: v.source,
+        startIndex: 0,
+        endIndex: 0,
+        content: v.default_value || '',
+      }));
+
+      setSavedVariables(autoVariables);
+      
+      // Сразу сохраняем автошаблон
+      if (!templateName) {
+        toast({
+          title: 'Укажите название',
+          description: 'Введите название шаблона перед автоанализом',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const saveResponse = await fetch('https://functions.poehali.dev/cb19fd34-0ded-42ab-862c-3665ec9698d7', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: templateName,
+          description: templateDescription || 'Автоматически размеченный шаблон',
+          html_content: data.template_html, // Шаблон с {{плейсхолдерами}}
+          original_html: data.original_html, // Оригинал
+          manual_variables: autoVariables,
+        }),
+      });
+
+      if (!saveResponse.ok) throw new Error('Ошибка сохранения');
+
+      const saveData = await saveResponse.json();
+      setCurrentTemplateId(saveData.template_id);
+
+      toast({
+        title: '✨ Автошаблон создан',
+        description: `${data.variables_count} переменных: ${data.suggestions.has_speakers ? 'спикеры, ' : ''}${data.suggestions.has_intro ? 'вступление, ' : ''}${data.suggestions.has_cta ? 'CTA' : ''}`,
+      });
+
+      await loadTemplates();
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (view === 'list') {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -278,9 +359,20 @@ export default function TemplateManualEditor() {
                   />
                 </div>
               </div>
-              <div className="mt-3 flex items-center gap-3 text-sm text-gray-600">
-                <Icon name="FileText" size={16} />
-                <span>Файл: {fileName}</span>
+              <div className="mt-3 flex items-center justify-between">
+                <div className="flex items-center gap-3 text-sm text-gray-600">
+                  <Icon name="FileText" size={16} />
+                  <span>Файл: {fileName}</span>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleAutoAnalyze}
+                  className="gap-2"
+                >
+                  <Icon name="Sparkles" size={16} />
+                  Автоматическая разметка
+                </Button>
               </div>
             </Card>
 

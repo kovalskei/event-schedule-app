@@ -34,6 +34,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     name: str = body_data.get('name', '')
     description: str = body_data.get('description', '')
     html_content: str = body_data.get('html_content', '')
+    original_html: str = body_data.get('original_html', '')  # Опционально из автоанализа
     manual_variables: List[Dict[str, Any]] = body_data.get('manual_variables', [])
     
     if not name or not html_content:
@@ -51,22 +52,29 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': json.dumps({'error': 'DATABASE_URL not configured'})
         }
     
-    # Создаём шаблон с плейсхолдерами {{variable_name}}
-    html_template = html_content
-    
-    # Сортируем переменные по startIndex в обратном порядке (с конца)
-    sorted_vars = sorted(manual_variables, key=lambda v: v.get('startIndex', 0), reverse=True)
-    
-    for var in sorted_vars:
-        start = var.get('startIndex', 0)
-        end = var.get('endIndex', 0)
-        var_name = var.get('name', '')
+    # Если original_html передан (из автоанализа), используем готовый шаблон
+    if original_html:
+        html_template = html_content  # Уже содержит {{плейсхолдеры}}
+        original_html_to_save = original_html
+        print(f'[INFO] Using pre-processed template from auto-analysis')
+    else:
+        # Создаём шаблон с плейсхолдерами {{variable_name}} из ручной разметки
+        html_template = html_content
         
-        if start >= 0 and end > start and var_name:
-            # Заменяем выделенный текст на плейсхолдер
-            html_template = html_template[:start] + '{{' + var_name + '}}' + html_template[end:]
-    
-    print(f'[INFO] Created template with {len(manual_variables)} placeholders')
+        # Сортируем переменные по startIndex в обратном порядке (с конца)
+        sorted_vars = sorted(manual_variables, key=lambda v: v.get('startIndex', 0), reverse=True)
+        
+        for var in sorted_vars:
+            start = var.get('startIndex', 0)
+            end = var.get('endIndex', 0)
+            var_name = var.get('name', '')
+            
+            if start >= 0 and end > start and var_name:
+                # Заменяем выделенный текст на плейсхолдер
+                html_template = html_template[:start] + '{{' + var_name + '}}' + html_template[end:]
+        
+        original_html_to_save = html_content  # Оригинал = исходный HTML
+        print(f'[INFO] Created template with {len(manual_variables)} placeholders from manual markup')
     
     conn = psycopg2.connect(dsn)
     try:
@@ -80,7 +88,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             """, (
                 name,
                 html_template,  # Шаблон с {{плейсхолдерами}}
-                html_content,   # Оригинал с реальным текстом
+                original_html_to_save,  # Оригинал с реальным текстом
                 json.dumps(manual_variables),
                 description or 'Вручную размеченный шаблон'
             ))

@@ -1,0 +1,29 @@
+{
+  "tests": [
+    {
+      "name": "Analyze HTML template",
+      "method": "POST",
+      "body": {
+        "html_content": "<html><body><p>Здравствуйте, приглашаем вас на конференцию 15 ноября 2024.</p><a href='#' style='background-color: #AE32E3;'>Зарегистрироваться</a></body></html>"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "template_html": "string",
+        "variables": "array"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Missing html_content",
+      "method": "POST",
+      "body": {},
+      "expectedStatus": 400
+    },
+    {
+      "name": "OPTIONS CORS",
+      "method": "OPTIONS",
+      "expectedStatus": 200
+    }
+  ]
+}
