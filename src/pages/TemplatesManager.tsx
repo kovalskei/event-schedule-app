@@ -216,10 +216,20 @@ export default function TemplatesManager() {
                 Создавайте размеченные шаблоны для использования в разных мероприятиях
               </p>
             </div>
-            <Button onClick={handleCreateNew} size="lg">
-              <Icon name="Plus" size={20} className="mr-2" />
-              Создать шаблон
-            </Button>
+            <div className="flex gap-3">
+              <Button 
+                onClick={() => window.location.href = '/templates/manual'} 
+                variant="outline"
+                size="lg"
+              >
+                <Icon name="Sparkles" size={20} className="mr-2" />
+                Автоанализ шаблонов
+              </Button>
+              <Button onClick={handleCreateNew} size="lg">
+                <Icon name="Plus" size={20} className="mr-2" />
+                Создать шаблон
+              </Button>
+            </div>
           </div>
 
           {templates.length === 0 ? (

@@ -11,6 +11,7 @@ import CampaignHistory from "./pages/CampaignHistory";
 import AISettings from "./pages/AISettings";
 import EventsManager from "./pages/EventsManager";
 import TemplatesManager from "./pages/TemplatesManager";
+import TemplateManualEditor from "./pages/TemplateManualEditor";
 import TemplateTest from "./pages/TemplateTest";
 import NotFound from "./pages/NotFound";
 
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/history" element={<CampaignHistory />} />
             <Route path="/ai-settings" element={<AISettings />} />
             <Route path="/templates" element={<TemplatesManager />} />
+            <Route path="/templates/manual" element={<TemplateManualEditor />} />
             <Route path="/templates-test" element={<TemplateTest />} />
             <Route path="/dashboard" element={<Index />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
