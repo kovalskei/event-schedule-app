@@ -129,7 +129,7 @@ export default function TemplatesManager() {
     setLoading(true);
     try {
       const response = await fetch(
-        `https://functions.poehali.dev/b4868cc3-30a0-443e-8c0f-b2de1c5dee8f?template_id=${templateId}`
+        `https://functions.poehali.dev/b5791965-754f-416c-9998-028b60051e40?template_id=${templateId}`
       );
       if (!response.ok) throw new Error('Ошибка загрузки шаблона');
 
@@ -142,7 +142,7 @@ export default function TemplatesManager() {
       setFileName(`${template.name}.html`);
       setSavedVariables(template.manual_variables || []);
       setCurrentTemplateId(templateId);
-      setView('editor');
+      setView('create');
     } catch (error: any) {
       toast({
         title: 'Ошибка загрузки',
@@ -158,7 +158,7 @@ export default function TemplatesManager() {
     if (!confirm('Удалить этот шаблон?')) return;
 
     try {
-      const response = await fetch('https://functions.poehali.dev/6d5f0479-16a9-4d44-8f35-e3e8e8d4da88', {
+      const response = await fetch('https://functions.poehali.dev/da23dc48-d163-43c7-9f2f-7917bbb166c0', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ template_id: templateId }),
