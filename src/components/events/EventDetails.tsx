@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import MailingListSettings from './MailingListSettings';
 import DraftsViewer from './DraftsViewer';
 import ContentPlanDialog from './ContentPlanDialog';
+import ContentPlanV2Dialog from './ContentPlanV2Dialog';
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
 
@@ -62,6 +63,7 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [contentPlanOpen, setContentPlanOpen] = useState(false);
+  const [contentPlanV2Open, setContentPlanV2Open] = useState(false);
   const [selectedList, setSelectedList] = useState<MailingList | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -186,6 +188,10 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
                 <Icon name="Calendar" className="w-4 h-4 mr-2" />
                 Контент-план
               </Button>
+              <Button onClick={() => setContentPlanV2Open(true)} variant="outline" className="border-blue-500 text-blue-600">
+                <Icon name="Sparkles" className="w-4 h-4 mr-2" />
+                Контент-план V2
+              </Button>
               <Button onClick={onLinkList}>
                 <Icon name="Link" className="w-4 h-4 mr-2" />
                 Привязать список
@@ -289,6 +295,15 @@ export default function EventDetails({ event, mailingLists, contentTypes, onBack
       <ContentPlanDialog
         open={contentPlanOpen}
         onOpenChange={setContentPlanOpen}
+        event={event}
+        mailingLists={mailingLists}
+        contentTypes={contentTypes}
+        onUpdate={onUpdate}
+      />
+
+      <ContentPlanV2Dialog
+        open={contentPlanV2Open}
+        onOpenChange={setContentPlanV2Open}
         event={event}
         mailingLists={mailingLists}
         contentTypes={contentTypes}
