@@ -1760,6 +1760,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 
                 try:
                     print(f'[DEBUG] Saving draft: list_id={event_list_id}, type_id={content_type_id}, subject={subject[:50]}...')
+                    print(f'[DEBUG] HTML content length: {len(html_content)} chars')
                     
                     cur.execute('''
                         INSERT INTO t_p22819116_event_schedule_app.generated_emails 
@@ -1769,10 +1770,13 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     ''', (event_list_id, content_type_id, subject, html_content, html_content, json.dumps(metadata)))
                     
                     result = cur.fetchone()
+                    print(f'[DEBUG] Fetchone result: {result}, type: {type(result)}')
+                    
                     if not result:
                         raise Exception('INSERT did not return id - check constraints and triggers')
                     
-                    draft_id = result[0]
+                    # RealDictCursor returns dict, not tuple!
+                    draft_id = result['id'] if isinstance(result, dict) else result[0]
                     conn.commit()
                     print(f'[DEBUG] Draft saved successfully: id={draft_id}')
                     
