@@ -1417,7 +1417,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     }
                 
                 cur.execute('''
-                    SELECT html_template, subject_template, instructions, manual_variables
+                    SELECT html_template, subject_template, instructions, manual_variables, original_html
                     FROM email_templates
                     WHERE event_id = %s AND content_type_id = %s
                     LIMIT 1
@@ -1434,6 +1434,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 instructions = template_row['instructions'] or ''
                 html_template = template_row['html_template'] or ''
                 manual_variables = template_row.get('manual_variables') or []
+                original_html = template_row.get('original_html') or ''
                 
                 cur.execute('''
                     SELECT ai_provider, ai_model, ai_assistant_id
@@ -1544,25 +1545,36 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         final_html = final_html.replace(f'{{{{{var_name}}}}}', var_value)
                     
                     # Шаг 3: ИИ проверяет письмо с точки зрения маркетинга и может доработать
+                    example_section = ''
+                    if original_html:
+                        example_section = f"""
+ПРИМЕР ПИСЬМА (как должно выглядеть):
+{original_html[:4000]}
+
+---
+"""
+                    
                     review_prompt = f"""
 Тема письма: {title}
 Инструкции шаблона: {instructions}
 
-Готовое письмо (HTML):
+{example_section}
+ГОТОВОЕ ПИСЬМО (с новыми переменными):
 {final_html}
 
 ЗАДАЧИ:
-1. Проверь письмо с точки зрения маркетинга (понятность, призыв к действию, структура)
-2. Убедись что дата мероприятия ({event_date if event_date else 'указана в программе'}) присутствует
-3. Если нужны минимальные правки - внеси их (но сохрани стиль и структуру!)
-4. Если есть логотип, добавь его в шапку: <img src="{logo_url}" alt="Logo" style="max-width: 200px;"> (только если его нет)
+1. Сравни готовое письмо с примером - сохранён ли стиль и структура?
+2. Проверь с точки зрения маркетинга (понятность, призыв к действию, структура)
+3. Убедись что дата мероприятия ({event_date if event_date else 'указана в программе'}) присутствует
+4. Если нужны минимальные правки - внеси их (но строго сохрани стиль как в примере!)
+5. Если есть логотип, добавь его в шапку: <img src="{logo_url}" alt="Logo" style="max-width: 200px;"> (только если его нет)
 
 Верни JSON:
 {{
   "subject": "Тема письма (можешь улучшить)",
   "html": "<финальный HTML>",
   "marketing_score": 8,
-  "notes": "Краткая оценка"
+  "notes": "Краткая оценка и сравнение с примером"
 }}
 """
                     
