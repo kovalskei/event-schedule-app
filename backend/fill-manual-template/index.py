@@ -3,6 +3,7 @@ import os
 import psycopg2
 from typing import Dict, Any
 from openai import OpenAI
+import httpx
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
@@ -82,14 +83,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             manual_variables = row[1] or []
             template_name = row[2]
         
+        http_client = httpx.Client()
+        
         if openrouter_key:
             client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
-                api_key=openrouter_key
+                api_key=openrouter_key,
+                http_client=http_client
             )
             model = "openai/gpt-4o-mini"
         else:
-            client = OpenAI(api_key=openai_key)
+            client = OpenAI(
+                api_key=openai_key,
+                http_client=http_client
+            )
             model = "gpt-4o-mini"
         
         variables_to_generate = []
