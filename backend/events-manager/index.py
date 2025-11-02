@@ -270,6 +270,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 print(f'[DEBUG] Reading content plan from: {doc_id}')
                 content_text = read_google_doc(doc_id)
                 print(f'[DEBUG] Content plan text length: {len(content_text)}')
+                print(f'[DEBUG] First 500 chars: {content_text[:500]}')
                 
                 rows = []
                 for line in content_text.split('\n'):
@@ -279,10 +280,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     
                     parts = line.split('\t')
                     if len(parts) >= 2:
-                        title = parts[0].strip()
+                        theme = parts[0].strip()
                         content_type = parts[1].strip()
-                        if title and content_type:
-                            rows.append({'title': title, 'content_type': content_type})
+                        if theme and content_type:
+                            rows.append({'theme': theme, 'content_type': content_type})
                 
                 return {
                     'statusCode': 200,
