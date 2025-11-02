@@ -207,6 +207,7 @@ export default function TemplateEditor({ htmlContent, initialVariables = [], onS
           <VariableForm
             initialData={editingVariable}
             selectedText={selectedText}
+            existingVariables={variables}
             onSubmit={editingVariable ? handleUpdateVariable : handleAddVariable}
             onCancel={() => {
               setShowVariableForm(false);
@@ -280,21 +281,39 @@ export default function TemplateEditor({ htmlContent, initialVariables = [], onS
 interface VariableFormProps {
   initialData: TemplateVariable | null;
   selectedText: string;
+  existingVariables: TemplateVariable[];
   onSubmit: (data: { name: string; description: string; source: string }) => void;
   onCancel: () => void;
   onDelete?: () => void;
 }
 
-function VariableForm({ initialData, selectedText, onSubmit, onCancel, onDelete }: VariableFormProps) {
+function VariableForm({ initialData, selectedText, existingVariables, onSubmit, onCancel, onDelete }: VariableFormProps) {
+  const [mode, setMode] = useState<'new' | 'existing'>(initialData ? 'new' : 'new');
+  const [selectedExistingVar, setSelectedExistingVar] = useState<string>('');
   const [name, setName] = useState(initialData?.name || '');
   const [description, setDescription] = useState(initialData?.description || '');
   const [source, setSource] = useState(initialData?.source || 'user_input');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (mode === 'existing' && selectedExistingVar) {
+      const existingVar = existingVariables.find(v => v.id === selectedExistingVar);
+      if (existingVar) {
+        onSubmit({ 
+          name: existingVar.name, 
+          description: existingVar.description, 
+          source: existingVar.source 
+        });
+      }
+      return;
+    }
+    
     if (!name || !description) return;
     onSubmit({ name, description, source });
   };
+
+  const availableVariables = existingVariables.filter(v => v.id !== initialData?.id);
 
   return (
     <Card className="p-4 border-2 border-purple-300 bg-purple-50">
@@ -310,7 +329,62 @@ function VariableForm({ initialData, selectedText, onSubmit, onCancel, onDelete 
         </div>
       )}
 
+      {!initialData && availableVariables.length > 0 && (
+        <div className="mb-4 flex gap-2">
+          <Button
+            type="button"
+            variant={mode === 'new' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMode('new')}
+            className="flex-1"
+          >
+            <Icon name="Plus" size={16} className="mr-2" />
+            Создать новую
+          </Button>
+          <Button
+            type="button"
+            variant={mode === 'existing' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMode('existing')}
+            className="flex-1"
+          >
+            <Icon name="Copy" size={16} className="mr-2" />
+            Использовать существующую
+          </Button>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-3">
+        {mode === 'existing' && availableVariables.length > 0 ? (
+          <div>
+            <Label htmlFor="existing-var">Выберите переменную</Label>
+            <select
+              id="existing-var"
+              value={selectedExistingVar}
+              onChange={(e) => setSelectedExistingVar(e.target.value)}
+              className="w-full px-3 py-2 border rounded-md"
+              required
+            >
+              <option value="">-- Выберите --</option>
+              {availableVariables.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name} — {v.description.substring(0, 50)}...
+                </option>
+              ))}
+            </select>
+            {selectedExistingVar && (
+              <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200 text-sm">
+                <div className="font-medium text-blue-900">
+                  {availableVariables.find(v => v.id === selectedExistingVar)?.name}
+                </div>
+                <div className="text-blue-700 mt-1">
+                  {availableVariables.find(v => v.id === selectedExistingVar)?.description}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
         <div>
           <Label htmlFor="var-name">Имя переменной</Label>
           <Input
@@ -348,11 +422,13 @@ function VariableForm({ initialData, selectedText, onSubmit, onCancel, onDelete 
             <option value="database">База данных</option>
           </select>
         </div>
+        </>
+        )}
 
         <div className="flex gap-2 pt-2">
           <Button type="submit" className="flex-1">
             <Icon name="Check" size={18} className="mr-2" />
-            {initialData ? 'Обновить' : 'Добавить'}
+            {mode === 'existing' ? 'Применить' : initialData ? 'Обновить' : 'Добавить'}
           </Button>
           <Button type="button" variant="outline" onClick={onCancel}>
             Отмена
