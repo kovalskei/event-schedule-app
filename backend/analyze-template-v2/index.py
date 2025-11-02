@@ -29,6 +29,7 @@ class BlockAnalyzer(HTMLParser):
         self.text_buffer = []
         self.in_table = False
         self.depth = 0
+        self.table_rows = []  # Для анализа строк таблицы
         
     def handle_starttag(self, tag, attrs):
         self.depth += 1
@@ -64,24 +65,83 @@ class BlockAnalyzer(HTMLParser):
         if stripped:
             self.text_buffer.append(stripped)
     
+    def find_repeating_patterns(self, html: str, text: str) -> List[Tuple[str, str]]:
+        """Ищет повторяющиеся паттерны (например, несколько карточек спикеров подряд)"""
+        patterns = []
+        
+        # Ищем повторяющиеся <tr> в таблицах
+        if '<table' in html.lower():
+            rows = re.findall(r'<tr[^>]*>.*?</tr>', html, re.DOTALL | re.IGNORECASE)
+            if len(rows) > 1:
+                # Проверяем схожесть структуры строк
+                first_row_tags = re.findall(r'<(\w+)', rows[0])
+                similar_rows = []
+                for row in rows:
+                    row_tags = re.findall(r'<(\w+)', row)
+                    if row_tags == first_row_tags:  # Одинаковая структура
+                        row_text = re.sub(r'<[^>]+>', '', row).strip()
+                        similar_rows.append((row, row_text))
+                
+                if len(similar_rows) >= 2:
+                    patterns = similar_rows
+        
+        # Ищем повторяющиеся div-контейнеры (карточки спикеров)
+        if not patterns:
+            # Проверяем паттерн: несколько <td> подряд с похожей структурой
+            cells = re.findall(r'<td[^>]*>.*?</td>', html, re.DOTALL | re.IGNORECASE)
+            if len(cells) > 1:
+                first_cell_tags = re.findall(r'<(\w+)', cells[0])
+                similar_cells = []
+                for cell in cells:
+                    cell_tags = re.findall(r'<(\w+)', cell)
+                    if len(cell_tags) >= 3 and cell_tags[:3] == first_cell_tags[:3]:
+                        cell_text = re.sub(r'<[^>]+>', '', cell).strip()
+                        if len(cell_text) > 20:  # Не пустые ячейки
+                            similar_cells.append((cell, cell_text))
+                
+                if len(similar_cells) >= 2:
+                    patterns = similar_cells
+        
+        return patterns
+    
     def analyze_and_save_block(self, html: str, text: str):
         if not text or len(text) < 10:
             return
         
-        block_type, knowledge_source, instructions, schema = self.classify_block(text, html)
+        # Проверяем есть ли повторяющиеся паттерны (спикеры)
+        patterns = self.find_repeating_patterns(html, text)
         
-        block_name = f"{block_type}_{len([b for b in self.blocks if b['block_type'] == block_type]) + 1}"
-        
-        self.blocks.append({
-            'block_type': block_type,
-            'block_name': block_name,
-            'html_content': html.strip(),
-            'block_order': len(self.blocks),
-            'knowledge_source': knowledge_source,
-            'generation_instructions': instructions,
-            'example_content': text[:500],
-            'data_schema': schema
-        })
+        if patterns and len(patterns) >= 2:
+            # Нашли повторяющуюся структуру — создаём блоки для каждого элемента
+            for idx, (pattern_html, pattern_text) in enumerate(patterns):
+                block_type, knowledge_source, instructions, schema = self.classify_block(pattern_text, pattern_html)
+                block_name = f"{block_type}_{len([b for b in self.blocks if b['block_type'] == block_type]) + 1}"
+                
+                self.blocks.append({
+                    'block_type': block_type,
+                    'block_name': block_name,
+                    'html_content': pattern_html.strip(),
+                    'block_order': len(self.blocks),
+                    'knowledge_source': knowledge_source,
+                    'generation_instructions': instructions,
+                    'example_content': pattern_text[:500],
+                    'data_schema': schema
+                })
+        else:
+            # Обычный блок без паттернов
+            block_type, knowledge_source, instructions, schema = self.classify_block(text, html)
+            block_name = f"{block_type}_{len([b for b in self.blocks if b['block_type'] == block_type]) + 1}"
+            
+            self.blocks.append({
+                'block_type': block_type,
+                'block_name': block_name,
+                'html_content': html.strip(),
+                'block_order': len(self.blocks),
+                'knowledge_source': knowledge_source,
+                'generation_instructions': instructions,
+                'example_content': text[:500],
+                'data_schema': schema
+            })
     
     def classify_block(self, text: str, html: str) -> Tuple[str, str, str, Dict]:
         text_lower = text.lower()
