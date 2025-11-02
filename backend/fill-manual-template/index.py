@@ -1,14 +1,14 @@
 import json
 import os
 import psycopg2
-from typing import Dict, Any, List
-import anthropic
+from typing import Dict, Any
+from openai import OpenAI
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Генерация письма на основе размеченного шаблона и темы
+    Business: Генерация письма на основе размеченного шаблона
     Args: event с body: {template_id, topic, knowledge_context}
-    Returns: {generated_html, variables_filled: {...}}
+    Returns: {generated_html, variables_filled}
     '''
     method: str = event.get('httpMethod', 'POST')
     
@@ -44,13 +44,21 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     
     dsn = os.environ.get('DATABASE_URL')
-    api_key = os.environ.get('ANTHROPIC_API_KEY')
+    openai_key = os.environ.get('OPENAI_API_KEY')
+    openrouter_key = os.environ.get('OPENROUTER_API_KEY')
     
-    if not dsn or not api_key:
+    if not dsn:
         return {
             'statusCode': 500,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'DATABASE_URL or ANTHROPIC_API_KEY not configured'})
+            'body': json.dumps({'error': 'DATABASE_URL not configured'})
+        }
+    
+    if not openai_key and not openrouter_key:
+        return {
+            'statusCode': 500,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({'error': 'OPENAI_API_KEY or OPENROUTER_API_KEY required'})
         }
     
     conn = psycopg2.connect(dsn)
@@ -74,7 +82,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             manual_variables = row[1] or []
             template_name = row[2]
         
-        client = anthropic.Anthropic(api_key=api_key)
+        if openrouter_key:
+            client = OpenAI(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=openrouter_key
+            )
+            model = "openai/gpt-4o-mini"
+        else:
+            client = OpenAI(api_key=openai_key)
+            model = "gpt-4o-mini"
         
         variables_to_generate = []
         for var in manual_variables:
@@ -102,22 +118,20 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 4. Если источник "knowledge_base" - используй контекст выше
 5. Если источник "ai_generated" - придумай релевантный контент
 
-Верни JSON в формате:
+Верни ТОЛЬКО JSON без дополнительного текста в формате:
 {{
   "variable_name": "сгенерированное значение",
   ...
 }}"""
 
-        message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=4000,
-            messages=[{
-                "role": "user",
-                "content": prompt
-            }]
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=4000
         )
         
-        response_text = message.content[0].text
+        response_text = completion.choices[0].message.content
         
         json_start = response_text.find('{')
         json_end = response_text.rfind('}') + 1

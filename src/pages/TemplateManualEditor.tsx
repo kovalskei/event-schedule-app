@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 import { Card } from '@/components/ui/card';
 import TemplateEditor from '@/components/TemplateEditor';
+import TemplateGenerateForm from '@/components/TemplateGenerateForm';
 import { useToast } from '@/hooks/use-toast';
 
 interface TemplateVariable {
@@ -32,6 +33,9 @@ export default function TemplateManualEditor() {
   const [savedVariables, setSavedVariables] = useState<TemplateVariable[]>([]);
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currentTemplateId, setCurrentTemplateId] = useState<number | null>(null);
+  const [generatedHtml, setGeneratedHtml] = useState('');
+  const [generatedVariables, setGeneratedVariables] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   useEffect(() => {
@@ -125,6 +129,7 @@ export default function TemplateManualEditor() {
       setTemplateDescription(template.description || '');
       setFileName(`${template.name}.html`);
       setSavedVariables(template.manual_variables || []);
+      setCurrentTemplateId(templateId);
       setView('editor');
     } catch (error: any) {
       toast({
@@ -273,13 +278,58 @@ export default function TemplateManualEditor() {
               </div>
             </Card>
 
+            {savedVariables.length > 0 && currentTemplateId && (
+              <TemplateGenerateForm
+                templateId={currentTemplateId}
+                templateName={templateName}
+                onGenerate={(html, vars) => {
+                  setGeneratedHtml(html);
+                  setGeneratedVariables(vars);
+                  toast({
+                    title: 'Письмо сгенерировано!',
+                    description: 'Результат ниже',
+                  });
+                }}
+              />
+            )}
+
             <TemplateEditor 
               htmlContent={htmlContent} 
               initialVariables={savedVariables}
               onSave={handleSaveTemplate} 
             />
 
-            {savedVariables.length > 0 && (
+            {generatedHtml && (
+              <Card className="mt-6 p-6 border-2 border-green-400">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                  <Icon name="CheckCircle2" size={20} className="text-green-600" />
+                  Сгенерированное письмо
+                </h3>
+                
+                <div className="mb-4 p-3 bg-gray-50 rounded border">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Заполненные переменные:</h4>
+                  <div className="space-y-1 text-sm">
+                    {Object.entries(generatedVariables).map(([key, value]) => (
+                      <div key={key} className="flex gap-2">
+                        <span className="font-mono text-purple-600 font-semibold">{key}:</span>
+                        <span className="text-gray-800">{value.substring(0, 80)}...</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border rounded p-4 bg-white overflow-auto max-h-96">
+                  <iframe
+                    srcDoc={generatedHtml}
+                    className="w-full h-96 border-0"
+                    title="Generated Email"
+                    sandbox="allow-same-origin"
+                  />
+                </div>
+              </Card>
+            )}
+
+            {savedVariables.length > 0 && !generatedHtml && (
               <Card className="mt-6 p-4 bg-green-50 border-green-200">
                 <div className="flex items-center gap-2 text-green-800">
                   <Icon name="CheckCircle2" size={20} />

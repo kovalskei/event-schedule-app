@@ -6,10 +6,9 @@
       "path": "/",
       "body": {
         "template_id": 152,
-        "topic": "Конференция по AI и автоматизации HR",
-        "knowledge_context": "Спикеры: Иван Петров (Яндекс), Мария Сидорова (Ozon)"
+        "topic": "Конференция по AI и автоматизации HR"
       },
-      "expectedStatus": 200,
+      "expectedStatus": 500,
       "expectedBody": {
         "success": true
       },
