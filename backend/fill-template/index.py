@@ -157,9 +157,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             openai_key=openai_key
         )
         
+        print(f'[DEBUG] Template {template_id} has {len(template_variables)} variables defined')
+        print(f'[DEBUG] AI generated {len(variables_data)} variables: {list(variables_data.keys())}')
+        print(f'[DEBUG] Template HTML length: {len(html_template)} chars')
+        print(f'[DEBUG] Template contains {{{{ placeholders: {html_template.count("{{")}')
+        
         # 6. Заполняем шаблон
         filled_html = fill_template(html_template, variables_data)
         filled_subject = fill_template(subject_template, variables_data) if subject_template else ''
+        
+        print(f'[DEBUG] Filled HTML length: {len(filled_html)} chars')
+        print(f'[DEBUG] HTML changed: {filled_html != html_template}')
         
         return {
             'statusCode': 200,
