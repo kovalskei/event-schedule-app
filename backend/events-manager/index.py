@@ -1743,6 +1743,45 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                         'body': json.dumps({'error': f'Generation failed: {str(e)[:200]}'})
                     }
             
+            elif action == 'save_draft':
+                event_list_id = body_data.get('event_list_id')
+                subject = body_data.get('subject', '')
+                html_content = body_data.get('html_content', '')
+                content_type_id = body_data.get('content_type_id')
+                metadata = body_data.get('metadata', {})
+                
+                if not event_list_id or not html_content:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_list_id and html_content required'})
+                    }
+                
+                try:
+                    cur.execute('''
+                        INSERT INTO t_p22819116_event_schedule_app.generated_emails 
+                        (event_list_id, content_type_id, subject, html_body, status, metadata, created_at)
+                        VALUES (%s, %s, %s, %s, 'draft', %s, NOW())
+                        RETURNING id
+                    ''', (event_list_id, content_type_id, subject, html_content, json.dumps(metadata)))
+                    
+                    draft_id = cur.fetchone()[0]
+                    conn.commit()
+                    
+                    return {
+                        'statusCode': 200,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'success': True, 'draft_id': draft_id})
+                    }
+                except Exception as e:
+                    conn.rollback()
+                    print(f'[ERROR] Save draft failed: {str(e)}')
+                    return {
+                        'statusCode': 500,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': f'Save failed: {str(e)[:200]}'})
+                    }
+            
             else:
                 return {
                     'statusCode': 400,
