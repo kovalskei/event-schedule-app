@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import Icon from '@/components/ui/icon';
 import { Card } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import TemplateEditor from '@/components/TemplateEditor';
 import TemplateGenerateForm from '@/components/TemplateGenerateForm';
 import { useToast } from '@/hooks/use-toast';
@@ -36,6 +43,9 @@ export default function TemplateManualEditor() {
   const [currentTemplateId, setCurrentTemplateId] = useState<number | null>(null);
   const [generatedHtml, setGeneratedHtml] = useState('');
   const [generatedVariables, setGeneratedVariables] = useState<Record<string, string>>({});
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [testLoading, setTestLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -153,6 +163,48 @@ export default function TemplateManualEditor() {
     setTemplateDescription('');
     setSavedVariables([]);
     setView('list');
+  };
+
+  const handleQuickTest = async () => {
+    if (!currentTemplateId) {
+      toast({
+        title: 'Ошибка',
+        description: 'Сначала сохраните шаблон',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setTestLoading(true);
+    try {
+      const response = await fetch('https://functions.poehali.dev/a81b87a7-dd29-414f-bcf3-f2fda73c8c0f', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          template_id: currentTemplateId,
+          event_name: 'Тестовая конференция по маркетингу',
+        }),
+      });
+
+      if (!response.ok) throw new Error('Ошибка генерации');
+
+      const data = await response.json();
+      setPreviewHtml(data.filled_html);
+      setShowPreview(true);
+      
+      toast({
+        title: '✅ Письмо сгенерировано',
+        description: `Использовано ${Object.keys(data.variables_used || {}).length} переменных`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка теста',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setTestLoading(false);
+    }
   };
 
   const handleAutoAnalyze = async () => {
@@ -293,10 +345,31 @@ export default function TemplateManualEditor() {
                         </span>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm">
-                      <Icon name="Eye" size={16} className="mr-2" />
-                      Открыть
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleViewTemplate(template.id);
+                        }}
+                      >
+                        <Icon name="Eye" size={16} className="mr-2" />
+                        Открыть
+                      </Button>
+                      <Button 
+                        variant="default" 
+                        size="sm"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          setCurrentTemplateId(template.id);
+                          await handleQuickTest();
+                        }}
+                      >
+                        <Icon name="Play" size={16} className="mr-2" />
+                        Тест
+                      </Button>
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -440,6 +513,51 @@ export default function TemplateManualEditor() {
           </>
         )}
       </div>
+
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Icon name="Mail" size={24} />
+              Предпросмотр письма
+            </DialogTitle>
+            <DialogDescription>
+              Тестовая генерация для проверки работы шаблона
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="mt-4">
+            <div className="border rounded-lg overflow-hidden bg-white">
+              <iframe
+                srcDoc={previewHtml}
+                className="w-full h-[600px] border-0"
+                title="Email Preview"
+                sandbox="allow-same-origin"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowPreview(false)}>
+              Закрыть
+            </Button>
+            <Button 
+              onClick={() => {
+                const blob = new Blob([previewHtml], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `test-email-${Date.now()}.html`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              <Icon name="Download" size={16} className="mr-2" />
+              Скачать HTML
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

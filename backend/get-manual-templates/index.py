@@ -81,11 +81,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
             else:
                 cur.execute("""
-                    SELECT id, name, instructions, created_at, 
-                           jsonb_array_length(COALESCE(manual_variables, '[]'::jsonb)) as vars_count
-                    FROM t_p22819116_event_schedule_app.email_templates
-                    WHERE manual_variables IS NOT NULL 
-                      AND jsonb_array_length(manual_variables) > 0
+                    WITH ranked_templates AS (
+                        SELECT id, name, instructions, created_at, 
+                               jsonb_array_length(COALESCE(manual_variables, '[]'::jsonb)) as vars_count,
+                               ROW_NUMBER() OVER (PARTITION BY name ORDER BY created_at DESC) as rn
+                        FROM t_p22819116_event_schedule_app.email_templates
+                        WHERE manual_variables IS NOT NULL 
+                          AND jsonb_array_length(manual_variables) > 0
+                    )
+                    SELECT id, name, instructions, created_at, vars_count
+                    FROM ranked_templates
+                    WHERE rn = 1
                     ORDER BY created_at DESC
                     LIMIT 50
                 """)
