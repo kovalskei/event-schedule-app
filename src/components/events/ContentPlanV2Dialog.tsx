@@ -48,7 +48,7 @@ interface ContentPlanRow {
 }
 
 const EVENTS_MANAGER_URL = 'https://functions.poehali.dev/b56e5895-fb22-4d96-b746-b046a9fd2750';
-const GENERATE_EMAIL_URL = 'https://functions.poehali.dev/d2a2e722-c697-4c1e-a3c7-af2366b408af';
+const FILL_TEMPLATE_URL = 'https://functions.poehali.dev/b48a1389-105b-4007-a99d-d8941c0a38bf';
 
 export default function ContentPlanV2Dialog({ open, onOpenChange, event, mailingLists, contentTypes, onUpdate }: ContentPlanV2DialogProps) {
   const [contentPlanUrl, setContentPlanUrl] = useState('');
@@ -156,14 +156,14 @@ export default function ContentPlanV2Dialog({ open, onOpenChange, event, mailing
           
           console.log(`[V2] Using template: ${template.name} (id: ${template.id})`);
 
-          // Генерируем через новый бэкенд /generate-email
-          const generateResponse = await fetch(GENERATE_EMAIL_URL, {
+          // Генерируем через /fill-template (работающий эндпоинт)
+          const generateResponse = await fetch(FILL_TEMPLATE_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              theme: item.theme,
+              template_id: template.id,
               event_id: event.id,
-              template_id: template.id
+              theme: item.theme
             })
           });
 
@@ -181,12 +181,12 @@ export default function ContentPlanV2Dialog({ open, onOpenChange, event, mailing
             body: JSON.stringify({
               action: 'save_draft',
               event_list_id: parseInt(selectedListId),
-              subject: item.theme,
-              html_content: generateData.rendered_html,
+              subject: generateData.filled_subject || item.theme,
+              html_content: generateData.filled_html,
               content_type_id: contentType.id,
               metadata: {
-                ai_reasoning: generateData.ai_reasoning,
-                selected_speakers: generateData.selected_speakers,
+                variables_data: generateData.variables_data,
+                theme: generateData.theme,
                 generated_via: 'content_plan_v2'
               }
             })
@@ -199,7 +199,7 @@ export default function ContentPlanV2Dialog({ open, onOpenChange, event, mailing
           }
 
           successCount++;
-          console.log(`[V2] Generated: ${item.theme}`, generateData.ai_reasoning);
+          console.log(`[V2] Generated: ${item.theme}`, generateData.variables_data);
           
         } catch (itemError) {
           errorCount++;
