@@ -175,7 +175,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         for var in manual_variables:
             var_name = var['name']
             if var_name in variables_filled:
-                original_content = var['content']
                 new_content = variables_filled[var_name]
                 
                 # Обработка разных типов данных
@@ -183,7 +182,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     new_content = json.dumps(new_content, ensure_ascii=False)
                 new_content = str(new_content)
                 
-                generated_html = generated_html.replace(original_content, new_content, 1)
+                # Заменяем mustache-переменную на сгенерированный контент
+                generated_html = generated_html.replace(f'{{{{{var_name}}}}}', new_content)
         
         return {
             'statusCode': 200,
