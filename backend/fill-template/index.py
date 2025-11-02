@@ -94,7 +94,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # 1. Загружаем шаблон
         cur.execute("""
-            SELECT html_template, subject_template, instructions, original_html 
+            SELECT html_template, subject_template, instructions, original_html, manual_variables 
             FROM t_p22819116_event_schedule_app.email_templates 
             WHERE id = %s
         """, (template_id,))
@@ -113,9 +113,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'isBase64Encoded': False
             }
         
-        html_template, subject_template, instructions, original_html = template_row
+        html_template, subject_template, instructions, original_html, manual_variables_json = template_row
         
         # 2. Загружаем переменные шаблона
+        # Сначала пробуем из таблицы template_variables
         cur.execute("""
             SELECT variable_name, variable_description, default_value, is_required, variable_type
             FROM t_p22819116_event_schedule_app.template_variables
@@ -132,6 +133,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'is_required': is_req,
                 'type': var_type or 'text'
             })
+        
+        # Если нет переменных в таблице, используем manual_variables из JSON
+        if not template_variables and manual_variables_json:
+            try:
+                manual_vars = json.loads(manual_variables_json) if isinstance(manual_variables_json, str) else manual_variables_json
+                for var in manual_vars:
+                    template_variables.append({
+                        'name': var.get('name', ''),
+                        'description': var.get('description', ''),
+                        'default_value': var.get('content', '')[:100],  # Используем первые 100 символов контента как дефолт
+                        'is_required': False,
+                        'type': 'text'
+                    })
+                print(f'[INFO] Loaded {len(template_variables)} variables from manual_variables JSON')
+            except Exception as e:
+                print(f'[WARN] Failed to parse manual_variables: {e}')
         
         # 3. Загружаем базу знаний
         cur.execute("""
