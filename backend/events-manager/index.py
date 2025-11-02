@@ -439,6 +439,41 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'body': json.dumps({'template_id': template_id, 'message': 'Email template created'})
                 }
             
+            elif action == 'link_library_template':
+                event_id = body_data.get('event_id')
+                template_id = body_data.get('template_id')
+                content_type_id = body_data.get('content_type_id')
+                
+                if not event_id or not template_id or not content_type_id:
+                    return {
+                        'statusCode': 400,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'event_id, template_id, content_type_id required'})
+                    }
+                
+                cur.execute('''
+                    UPDATE email_templates 
+                    SET event_id = %s, content_type_id = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    RETURNING id
+                ''', (event_id, content_type_id, template_id))
+                
+                result = cur.fetchone()
+                if not result:
+                    return {
+                        'statusCode': 404,
+                        'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                        'body': json.dumps({'error': 'Template not found'})
+                    }
+                
+                conn.commit()
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                    'body': json.dumps({'success': True, 'message': 'Template linked to event'})
+                }
+            
             elif action == 'delete_email_template':
                 template_id = body_data.get('template_id')
                 

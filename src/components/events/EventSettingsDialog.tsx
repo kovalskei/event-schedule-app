@@ -88,10 +88,16 @@ export default function EventSettingsDialog({
   const [previewHtml, setPreviewHtml] = useState('');
   const templateFormRef = useRef<HTMLDivElement>(null);
   const contentTypeFormRef = useRef<HTMLDivElement>(null);
+  
+  const [libraryTemplates, setLibraryTemplates] = useState<any[]>([]);
+  const [showLibraryDialog, setShowLibraryDialog] = useState(false);
+  const [selectedLibraryTemplate, setSelectedLibraryTemplate] = useState<any>(null);
+  const [linkContentTypeId, setLinkContentTypeId] = useState<string>('');
 
   useEffect(() => {
     if (open && eventId) {
       loadEventSettings();
+      loadLibraryTemplates();
     }
   }, [open, eventId]);
 
@@ -113,6 +119,66 @@ export default function EventSettingsDialog({
     } catch (error: any) {
       toast({
         title: 'Ошибка загрузки',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadLibraryTemplates = async () => {
+    try {
+      const response = await fetch('https://functions.poehali.dev/b5791965-754f-416c-9998-028b60051e40');
+      if (!response.ok) throw new Error('Ошибка загрузки библиотеки');
+      const data = await response.json();
+      setLibraryTemplates(data.templates || []);
+    } catch (error: any) {
+      console.error('Library load error:', error);
+    }
+  };
+
+  const handleLinkLibraryTemplate = async () => {
+    if (!selectedLibraryTemplate || !linkContentTypeId || !eventId) {
+      toast({
+        title: 'Ошибка',
+        description: 'Выберите шаблон и тип контента',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(EVENTS_MANAGER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'link_library_template',
+          event_id: eventId,
+          template_id: selectedLibraryTemplate.id,
+          content_type_id: parseInt(linkContentTypeId),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: 'Шаблон привязан',
+        description: selectedLibraryTemplate.name,
+      });
+
+      setShowLibraryDialog(false);
+      setSelectedLibraryTemplate(null);
+      setLinkContentTypeId('');
+      loadEventSettings();
+    } catch (error: any) {
+      toast({
+        title: 'Ошибка привязки',
         description: error.message,
         variant: 'destructive',
       });
@@ -1082,22 +1148,35 @@ export default function EventSettingsDialog({
                 </div>
 
                 {contentTypes.length > 0 ? (
-                  <div ref={templateFormRef} className="border-t pt-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">
-                        {editingTemplate ? 'Редактировать шаблон' : 'Добавить новый шаблон'}
-                      </h3>
-                      {editingTemplate && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleCancelEdit}
-                        >
-                          <Icon name="X" className="w-4 h-4 mr-2" />
-                          Отмена
-                        </Button>
-                      )}
+                  <>
+                    <div className="border-t pt-4">
+                      <Button
+                        onClick={() => setShowLibraryDialog(true)}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        <Icon name="Library" className="w-4 h-4 mr-2" />
+                        Выбрать шаблон из библиотеки
+                      </Button>
                     </div>
+
+                    <div ref={templateFormRef} className="border-t pt-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold">
+                          {editingTemplate ? 'Редактировать шаблон' : 'Добавить новый шаблон'}
+                        </h3>
+                        {editingTemplate && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleCancelEdit}
+                          >
+                            <Icon name="X" className="w-4 h-4 mr-2" />
+                            Отмена
+                          </Button>
+                        )}
+                      </div>
+                  </>
                     
                     <div>
                       <Label htmlFor="template_content_type">Тип контента</Label>
@@ -1239,6 +1318,97 @@ export default function EventSettingsDialog({
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      <Dialog open={showLibraryDialog} onOpenChange={setShowLibraryDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Библиотека шаблонов</DialogTitle>
+            <DialogDescription>
+              Выберите шаблон и тип контента для привязки к мероприятию
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label>Тип контента</Label>
+              <Select value={linkContentTypeId} onValueChange={setLinkContentTypeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите тип контента" />
+                </SelectTrigger>
+                <SelectContent>
+                  {contentTypes.map((ct) => (
+                    <SelectItem key={ct.id} value={ct.id.toString()}>
+                      {ct.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Доступные шаблоны</Label>
+              {libraryTemplates.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  Библиотека шаблонов пуста
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  {libraryTemplates.map((template) => (
+                    <Card
+                      key={template.id}
+                      className={`cursor-pointer transition-all ${
+                        selectedLibraryTemplate?.id === template.id
+                          ? 'ring-2 ring-blue-500 bg-blue-50'
+                          : 'hover:bg-gray-50'
+                      }`}
+                      onClick={() => setSelectedLibraryTemplate(template)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="font-semibold">{template.name}</div>
+                            {template.description && (
+                              <div className="text-sm text-gray-600 mt-1">
+                                {template.description}
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 mt-2">
+                              <Icon name="Braces" className="w-3 h-3 text-gray-400" />
+                              <span className="text-xs text-gray-500">
+                                {template.variables_count || 0} переменных
+                              </span>
+                            </div>
+                          </div>
+                          {selectedLibraryTemplate?.id === template.id && (
+                            <Icon name="CheckCircle2" className="w-5 h-5 text-blue-600" />
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setShowLibraryDialog(false);
+                setSelectedLibraryTemplate(null);
+                setLinkContentTypeId('');
+              }}>
+                Отмена
+              </Button>
+              <Button
+                onClick={handleLinkLibraryTemplate}
+                disabled={!selectedLibraryTemplate || !linkContentTypeId || loading}
+              >
+                <Icon name="Link" className="w-4 h-4 mr-2" />
+                Привязать шаблон
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {previewTemplate && (
         <Dialog open={!!previewTemplate} onOpenChange={() => { setPreviewTemplate(null); setPreviewHtml(''); }}>
