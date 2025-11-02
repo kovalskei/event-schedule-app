@@ -111,26 +111,46 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'original_content': var['content']
             })
         
-        prompt = f"""Сгенерируй содержимое для переменных email-письма на основе темы.
+        # Подготовка данных о переменных с ограничениями
+        vars_with_limits = []
+        for var in manual_variables:
+            var_info = {
+                'name': var['name'],
+                'description': var['description'],
+                'source': var['source'],
+                'original_length': len(var['content']),
+                'original_preview': var['content'][:100] + '...' if len(var['content']) > 100 else var['content']
+            }
+            vars_with_limits.append(var_info)
+        
+        prompt = f"""Ты - профессиональный копирайтер email-рассылок для бизнес-конференций.
+
+КРИТИЧЕСКИ ВАЖНО: Сохраняй HTML-дизайн! Не добавляй теги, если их нет. Соблюдай длину текста.
 
 Тема письма: {topic}
 
-Контекст из базы знаний:
-{knowledge_context if knowledge_context else 'Нет дополнительного контекста'}
+Контекст из базы знаний мероприятия:
+{knowledge_context if knowledge_context else 'Используй общие знания о теме'}
 
-Переменные для генерации:
-{json.dumps(variables_to_generate, ensure_ascii=False, indent=2)}
+Переменные для генерации (с ограничениями):
+{json.dumps(vars_with_limits, ensure_ascii=False, indent=2)}
 
-Требования:
-1. Генерируй текст строго по описанию каждой переменной
-2. Учитывай тему письма и контекст
-3. Сохраняй стиль оригинального контента
-4. Если источник "knowledge_base" - используй контекст выше
-5. Если источник "ai_generated" - придумай релевантный контент
+СТРОГИЕ ТРЕБОВАНИЯ:
+1. **Длина**: Сохраняй длину ±20% от original_length (критично для дизайна!)
+2. **Стиль**: Копируй тон и структуру из original_preview
+3. **HTML**: НЕ добавляй HTML теги если их нет в оригинале
+4. **Логотип/Футер**: НЕ меняй (они фиксированные для мероприятия)
+5. **knowledge_base**: Используй контекст выше для точности
+6. **user_input**: Оставь как есть или адаптируй минимально
 
-Верни ТОЛЬКО JSON без дополнительного текста в формате:
+ПРИМЕРЫ качественного контента:
+- pain (вступление): "В 2024 рынок X столкнулся с проблемой Y. Мы собрали 10+ экспертов, которые решили это."
+- speakers: Формат JSON массива с name, title, pitch, photo_url
+- cta_text: "Зарегистрироваться бесплатно" или "Получить программу"
+
+Верни ТОЛЬКО JSON без markdown, без ```json:
 {{
-  "variable_name": "сгенерированное значение",
+  "variable_name": "значение",
   ...
 }}"""
 
@@ -156,6 +176,12 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if var_name in variables_filled:
                 original_content = var['content']
                 new_content = variables_filled[var_name]
+                
+                # Обработка разных типов данных
+                if isinstance(new_content, (list, dict)):
+                    new_content = json.dumps(new_content, ensure_ascii=False)
+                new_content = str(new_content)
+                
                 generated_html = generated_html.replace(original_content, new_content, 1)
         
         return {
