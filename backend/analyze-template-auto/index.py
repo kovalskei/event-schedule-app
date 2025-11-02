@@ -120,6 +120,40 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'default_value': date
             })
         
+        # Правило 6: Находим email и телефоны в футере
+        contacts = find_contacts(soup)
+        for contact in contacts:
+            if '@' in contact:
+                template_html = template_html.replace(contact, '{{email}}', 1)
+                variables.append({
+                    'name': 'email',
+                    'description': 'Email для контактов',
+                    'source': 'user_input',
+                    'default_value': contact
+                })
+            elif any(c.isdigit() for c in contact):
+                template_html = template_html.replace(contact, '{{phone}}', 1)
+                variables.append({
+                    'name': 'phone',
+                    'description': 'Телефон для контактов',
+                    'source': 'user_input',
+                    'default_value': contact
+                })
+        
+        # Правило 7: Находим название компании/мероприятия
+        event_name = find_event_name(soup)
+        if event_name:
+            template_html = template_html.replace(event_name, '{{event_name}}', 1)
+            variables.append({
+                'name': 'event_name',
+                'description': 'Название мероприятия',
+                'source': 'knowledge_base',
+                'default_value': event_name
+            })
+        
+        print(f'[INFO] Total variables found: {len(variables)}')
+        print(f'[INFO] Speakers: {len(speaker_blocks)}, Intro: {intro_var is not None}, CTA: {len(cta_buttons)}, Dates: {len(dates)}')
+        
         return {
             'statusCode': 200,
             'headers': {
@@ -176,35 +210,32 @@ def find_speaker_blocks(soup: BeautifulSoup) -> List[Dict[str, Any]]:
     """Находит повторяющиеся блоки спикеров"""
     speakers = []
     
-    # Паттерн: <td> с вложенной таблицей, содержащей img + текст
+    # Правило 1: <td> с вложенной таблицей (классический паттерн)
     for td in soup.find_all('td'):
-        inner_table = td.find('table')
+        inner_table = td.find('table', recursive=False)
         if not inner_table:
             continue
         
-        # Ищем img внутри
         img = inner_table.find('img')
         if not img:
             continue
         
-        # Ищем текстовые части
         text_parts = []
         for text_td in inner_table.find_all('td'):
             text = text_td.get_text(strip=True)
-            if text and text_td != td.find('td', recursive=False):  # не сам контейнер
+            if text and len(text) > 10:  # Игнорируем короткие тексты
                 text_parts.append(text)
         
-        if len(text_parts) >= 2:  # Должно быть минимум 2 части (title + pitch)
-            # Определяем структуру
-            title = text_parts[0]  # ex-HRD, РИВ ГОШ
-            pitch = text_parts[1] if len(text_parts) > 1 else ''  # Заголовок доклада
-            description = text_parts[2] if len(text_parts) > 2 else ''  # Описание
+        if len(text_parts) >= 2:
+            title = text_parts[0]
+            pitch = text_parts[1] if len(text_parts) > 1 else ''
+            description = text_parts[2] if len(text_parts) > 2 else ''
             
             speakers.append({
                 'full_html': str(td),
                 'template': str(td).replace(title, '{{title}}').replace(pitch, '{{pitch}}').replace(description, '{{description}}'),
                 'data': {
-                    'name': '',  # Нет имени в примере
+                    'name': '',
                     'title': title,
                     'pitch': pitch,
                     'description': description,
@@ -212,7 +243,69 @@ def find_speaker_blocks(soup: BeautifulSoup) -> List[Dict[str, Any]]:
                 }
             })
     
-    return speakers if len(speakers) >= 2 else []  # Минимум 2 спикера
+    # Правило 2: Повторяющиеся <tr> с bgcolor (спикеры в одной таблице)
+    if len(speakers) < 2:
+        for table in soup.find_all('table'):
+            rows_with_img = []
+            for tr in table.find_all('tr'):
+                img = tr.find('img')
+                if img and 'speaker' in img.get('src', '').lower() or img and 'avatar' in img.get('alt', '').lower():
+                    rows_with_img.append(tr)
+            
+            # Если нашли несколько строк с изображениями - это спикеры
+            if len(rows_with_img) >= 2:
+                speakers = []
+                for tr in rows_with_img:
+                    img = tr.find('img')
+                    texts = []
+                    for td in tr.find_all('td'):
+                        text = td.get_text(strip=True)
+                        if text and len(text) > 15:
+                            texts.append(text)
+                    
+                    if len(texts) >= 2:
+                        speakers.append({
+                            'full_html': str(tr),
+                            'template': str(tr),
+                            'data': {
+                                'title': texts[0],
+                                'pitch': texts[1],
+                                'description': texts[2] if len(texts) > 2 else '',
+                                'photo_url': img.get('src', '')
+                            }
+                        })
+                break
+    
+    # Правило 3: Ищем по тексту "спикер", "ex-", "Директор", "Руководитель"
+    if len(speakers) < 2:
+        speaker_markers = ['ex-', 'Директор', 'Руководитель', 'Лидер отдела', 'Head of', 'CEO', 'CTO']
+        potential_speakers = []
+        
+        for td in soup.find_all('td'):
+            text = td.get_text(strip=True)
+            # Проверяем наличие маркеров должностей
+            if any(marker in text for marker in speaker_markers):
+                # Ищем изображение рядом (в том же tr)
+                tr = td.find_parent('tr')
+                if tr:
+                    img = tr.find('img')
+                    if img:
+                        potential_speakers.append({
+                            'full_html': str(tr),
+                            'template': str(tr),
+                            'data': {
+                                'title': text.split('\n')[0][:100],
+                                'pitch': text.split('\n')[1][:200] if '\n' in text else '',
+                                'description': '',
+                                'photo_url': img.get('src', '')
+                            }
+                        })
+        
+        if len(potential_speakers) >= 2:
+            speakers = potential_speakers
+    
+    print(f'[DEBUG] Found {len(speakers)} speaker blocks')
+    return speakers if len(speakers) >= 2 else []
 
 
 def find_headlines(soup: BeautifulSoup) -> List[Dict[str, str]]:
@@ -261,6 +354,52 @@ def find_dates(text: str) -> List[str]:
         dates.extend(matches)
     
     return list(set(dates))  # Уникальные даты
+
+
+def find_contacts(soup: BeautifulSoup) -> List[str]:
+    """Находит email и телефоны"""
+    contacts = []
+    
+    # Ищем в <a href="mailto:"> и <a href="tel:">
+    for a in soup.find_all('a'):
+        href = a.get('href', '')
+        if 'mailto:' in href:
+            email = href.replace('mailto:', '')
+            contacts.append(email)
+        elif 'tel:' in href:
+            phone = a.get_text(strip=True)
+            contacts.append(phone)
+    
+    # Ищем паттерны email и телефонов в тексте
+    text = soup.get_text()
+    emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+    phones = re.findall(r'\+?\d[\d\s\(\)\-]{7,}', text)
+    
+    contacts.extend(emails)
+    contacts.extend([p.strip() for p in phones])
+    
+    return list(set(contacts))[:3]  # Максимум 3 контакта
+
+
+def find_event_name(soup: BeautifulSoup) -> str | None:
+    """Находит название мероприятия (обычно в логотипе или первом заголовке)"""
+    # Ищем в alt атрибуте логотипа
+    for img in soup.find_all('img'):
+        alt = img.get('alt', '')
+        if alt and len(alt) > 3 and len(alt) < 50:
+            # Проверяем что это не "logo", "image" и т.д.
+            if alt.lower() not in ['logo', 'image', 'banner', 'header']:
+                return alt
+    
+    # Ищем первый крупный текст (логотип может быть текстом)
+    for tag in ['h1', 'h2', 'strong', 'b']:
+        element = soup.find(tag)
+        if element:
+            text = element.get_text(strip=True)
+            if len(text) > 3 and len(text) < 50:
+                return text
+    
+    return None
 
 
 def replace_content(template: str, content: str, var_name: str, offset: int) -> Tuple[str, int]:
