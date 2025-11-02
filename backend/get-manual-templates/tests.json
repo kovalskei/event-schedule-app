@@ -1,0 +1,14 @@
+{
+  "tests": [
+    {
+      "name": "Get all templates",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {
+        "total": "number"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}
