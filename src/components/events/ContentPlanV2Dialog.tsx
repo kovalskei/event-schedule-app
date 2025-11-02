@@ -170,6 +170,7 @@ export default function ContentPlanV2Dialog({ open, onOpenChange, event, mailing
           const generateData = await generateResponse.json();
           
           if (!generateResponse.ok) {
+            console.error('[V2] Generate error details:', generateData);
             throw new Error(generateData.error || 'Ошибка генерации');
           }
 

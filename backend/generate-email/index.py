@@ -147,10 +147,18 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             })
             
             if render_response.status_code != 200:
+                error_details = render_response.text
+                print(f'[ERROR] Template rendering failed. Status: {render_response.status_code}')
+                print(f'[ERROR] Response: {error_details}')
+                print(f'[ERROR] Sent data: {ai_result["data"]}')
                 return {
                     'statusCode': 500,
                     'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                    'body': json.dumps({'error': 'Template rendering failed', 'details': render_response.text})
+                    'body': json.dumps({
+                        'error': 'Template rendering failed', 
+                        'details': error_details,
+                        'status_code': render_response.status_code
+                    })
                 }
             
             rendered = render_response.json()
