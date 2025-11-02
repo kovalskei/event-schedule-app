@@ -124,6 +124,7 @@ export default function TemplateManualEditor() {
       setTemplateName(template.name);
       setTemplateDescription(template.description || '');
       setFileName(`${template.name}.html`);
+      setSavedVariables(template.manual_variables || []);
       setView('editor');
     } catch (error: any) {
       toast({
@@ -272,7 +273,11 @@ export default function TemplateManualEditor() {
               </div>
             </Card>
 
-            <TemplateEditor htmlContent={htmlContent} onSave={handleSaveTemplate} />
+            <TemplateEditor 
+              htmlContent={htmlContent} 
+              initialVariables={savedVariables}
+              onSave={handleSaveTemplate} 
+            />
 
             {savedVariables.length > 0 && (
               <Card className="mt-6 p-4 bg-green-50 border-green-200">

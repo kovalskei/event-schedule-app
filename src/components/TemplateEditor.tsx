@@ -18,16 +18,21 @@ interface TemplateVariable {
 
 interface TemplateEditorProps {
   htmlContent: string;
+  initialVariables?: TemplateVariable[];
   onSave: (variables: TemplateVariable[], annotatedHTML: string) => void;
 }
 
-export default function TemplateEditor({ htmlContent, onSave }: TemplateEditorProps) {
-  const [variables, setVariables] = useState<TemplateVariable[]>([]);
+export default function TemplateEditor({ htmlContent, initialVariables = [], onSave }: TemplateEditorProps) {
+  const [variables, setVariables] = useState<TemplateVariable[]>(initialVariables);
   const [selectedText, setSelectedText] = useState('');
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null);
   const [showVariableForm, setShowVariableForm] = useState(false);
   const [editingVariable, setEditingVariable] = useState<TemplateVariable | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    setVariables(initialVariables);
+  }, [initialVariables]);
 
   useEffect(() => {
     if (iframeRef.current && htmlContent) {
