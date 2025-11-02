@@ -124,7 +124,13 @@ export default function TemplateManualEditor() {
       const data = await response.json();
       const template = data.template;
 
-      setHtmlContent(template.original_html || template.html_content);
+      // Всегда используем original_html для корректного отображения
+      const htmlToDisplay = template.original_html || template.html_content;
+      if (!template.original_html) {
+        console.warn('[TemplateEditor] Missing original_html, using html_content (may contain {{placeholders}})');
+      }
+      
+      setHtmlContent(htmlToDisplay);
       setTemplateName(template.name);
       setTemplateDescription(template.description || '');
       setFileName(`${template.name}.html`);
