@@ -7,10 +7,13 @@ Returns: HTTP response with adapted template, render result with auto-filled kno
 import json
 import re
 import html as html_escape_module
+import os
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from bs4 import BeautifulSoup, Tag, NavigableString
 from urllib.parse import urlparse, parse_qs, parse_qsl, urlencode, urlunparse
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 @dataclass
 class Placeholder:
@@ -36,15 +39,22 @@ class ValidationIssue:
     details: Optional[Dict] = None
 
 class KnowledgeStore:
-    """Load knowledge from events manager"""
+    """Load knowledge from database and external sources"""
+    
+    @staticmethod
+    def _get_db_connection():
+        db_url = os.environ.get('DATABASE_URL', '')
+        if not db_url:
+            return None
+        return psycopg2.connect(db_url, cursor_factory=RealDictCursor)
     
     @staticmethod
     def get_brand() -> Dict[str, Any]:
         return {
             'support': 'support@example.com',
             'phone': '+7 (999) 123-45-67',
-            'company': 'Company Name',
-            'address': 'Moscow, Russia'
+            'company': 'Название компании',
+            'address': 'Москва, Россия'
         }
     
     @staticmethod
@@ -62,28 +72,178 @@ class KnowledgeStore:
     
     @staticmethod
     def get_event(event_id: str) -> Dict[str, Any]:
-        return {
-            'title': f'Event {event_id}',
-            'date': '2025-12-01',
-            'location': 'Online',
-            'speakers': []
-        }
+        """Get event from database by ID"""
+        conn = KnowledgeStore._get_db_connection()
+        if not conn:
+            return {
+                'id': event_id,
+                'name': f'Event {event_id}',
+                'description': '',
+                'start_date': '2025-12-01',
+                'location': 'Online'
+            }
+        
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, name, description, start_date, end_date, 
+                           program_doc_id, pain_doc_id, default_tone, status
+                    FROM events 
+                    WHERE id = %s
+                """, (event_id,))
+                
+                row = cur.fetchone()
+                if row:
+                    return dict(row)
+                return {'id': event_id, 'name': f'Event {event_id}'}
+        except Exception as e:
+            print(f'Error fetching event: {e}')
+            return {'id': event_id, 'name': f'Event {event_id}'}
+        finally:
+            conn.close()
+    
+    @staticmethod
+    def get_event_mailing_list(event_id: str, list_id: str = None) -> Dict[str, Any]:
+        """Get mailing list config with UTM and branding"""
+        conn = KnowledgeStore._get_db_connection()
+        if not conn:
+            return {}
+        
+        try:
+            with conn.cursor() as cur:
+                if list_id:
+                    cur.execute("""
+                        SELECT eml.*, 
+                               ur.utm_source, ur.utm_medium, ur.utm_campaign, ur.utm_term, ur.utm_content
+                        FROM event_mailing_lists eml
+                        LEFT JOIN utm_rules ur ON ur.mailing_list_id = eml.id
+                        WHERE eml.event_id = %s AND eml.id = %s
+                        LIMIT 1
+                    """, (event_id, list_id))
+                else:
+                    cur.execute("""
+                        SELECT eml.*, 
+                               ur.utm_source, ur.utm_medium, ur.utm_campaign, ur.utm_term, ur.utm_content
+                        FROM event_mailing_lists eml
+                        LEFT JOIN utm_rules ur ON ur.mailing_list_id = eml.id
+                        WHERE eml.event_id = %s
+                        LIMIT 1
+                    """, (event_id,))
+                
+                row = cur.fetchone()
+                if row:
+                    result = dict(row)
+                    
+                    result['utm'] = {
+                        'utm_source': result.get('utm_source', 'newsletter'),
+                        'utm_medium': result.get('utm_medium', 'email'),
+                        'utm_campaign': result.get('utm_campaign', result.get('list_name', 'event')),
+                        'utm_term': result.get('utm_term', ''),
+                        'utm_content': result.get('utm_content', '')
+                    }
+                    
+                    return result
+                return {}
+        except Exception as e:
+            print(f'Error fetching mailing list: {e}')
+            return {}
+        finally:
+            conn.close()
     
     @staticmethod
     def get_event_content(event_id: str) -> Dict[str, Any]:
-        return {
-            'subjects': {
-                'A': 'Приглашаем на мероприятие',
-                'B': 'Не пропустите событие года'
-            },
-            'claims': {
-                'title': 'Главное событие года',
-                'description': 'Присоединяйтесь к нашему мероприятию'
-            },
-            'speakers': [
-                {'name': 'Иван Иванов', 'title': 'CEO', 'talk': 'Будущее технологий'}
-            ]
-        }
+        """Get event content from knowledge store"""
+        conn = KnowledgeStore._get_db_connection()
+        if not conn:
+            return {
+                'subjects': {'A': 'Приглашаем на мероприятие', 'B': 'Не пропустите событие года'},
+                'claims': {'title': 'Главное событие года', 'description': 'Присоединяйтесь'},
+                'speakers': []
+            }
+        
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT doc_type, content, metadata
+                    FROM knowledge_store
+                    WHERE event_id = %s AND doc_type IN ('program', 'pain', 'speakers')
+                    ORDER BY created_at DESC
+                """, (event_id,))
+                
+                rows = cur.fetchall()
+                
+                content_data = {
+                    'subjects': {'A': '', 'B': ''},
+                    'claims': {},
+                    'speakers': []
+                }
+                
+                for row in rows:
+                    doc_type = row['doc_type']
+                    content = row['content']
+                    metadata = row.get('metadata') or {}
+                    
+                    if doc_type == 'speakers' and content:
+                        lines = content.strip().split('\n')
+                        for line in lines[:10]:
+                            parts = line.split('\t')
+                            if len(parts) >= 3:
+                                content_data['speakers'].append({
+                                    'name': parts[0].strip(),
+                                    'title': parts[1].strip(),
+                                    'talk': parts[2].strip()
+                                })
+                    
+                    if doc_type == 'program':
+                        if 'title' in metadata:
+                            content_data['claims']['title'] = metadata['title']
+                        if 'description' in metadata:
+                            content_data['claims']['description'] = metadata['description']
+                
+                cur.execute("""
+                    SELECT id, name FROM events WHERE id = %s
+                """, (event_id,))
+                event_row = cur.fetchone()
+                if event_row:
+                    event_name = event_row['name']
+                    content_data['subjects']['A'] = f'Приглашаем на {event_name}'
+                    content_data['subjects']['B'] = f'Не пропустите: {event_name}'
+                
+                return content_data
+        except Exception as e:
+            print(f'Error fetching event content: {e}')
+            return {
+                'subjects': {'A': 'Приглашаем', 'B': 'Не пропустите'},
+                'claims': {},
+                'speakers': []
+            }
+        finally:
+            conn.close()
+    
+    @staticmethod
+    def list_events() -> List[Dict[str, Any]]:
+        """List all active events"""
+        conn = KnowledgeStore._get_db_connection()
+        if not conn:
+            return []
+        
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT id, name, description, start_date, status
+                    FROM events
+                    WHERE status = 'active'
+                    ORDER BY start_date DESC
+                    LIMIT 50
+                """)
+                
+                rows = cur.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            print(f'Error listing events: {e}')
+            return []
+        finally:
+            conn.close()
 
 class HTMLSanitizer:
     """Sanitize HTML for security - remove dangerous tags and attributes"""
@@ -597,6 +757,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         elif action == 'knowledge':
             event_id = body_data.get('eventId')
+            list_id = body_data.get('listId')
             
             knowledge = {
                 'brand': KnowledgeStore.get_brand(),
@@ -606,11 +767,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if event_id:
                 knowledge['event'] = KnowledgeStore.get_event(event_id)
                 knowledge['content'] = KnowledgeStore.get_event_content(event_id)
+                
+                mailing_list = KnowledgeStore.get_event_mailing_list(event_id, list_id)
+                if mailing_list:
+                    knowledge['mailing_list'] = mailing_list
+                    if 'utm' in mailing_list:
+                        knowledge['defaults']['utm'] = mailing_list['utm']
             
             return {
                 'statusCode': 200,
                 'headers': cors_headers,
                 'body': json.dumps(knowledge, ensure_ascii=False),
+                'isBase64Encoded': False
+            }
+        
+        elif action == 'list_events':
+            events = KnowledgeStore.list_events()
+            
+            return {
+                'statusCode': 200,
+                'headers': cors_headers,
+                'body': json.dumps({'events': events}, ensure_ascii=False),
                 'isBase64Encoded': False
             }
     

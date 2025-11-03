@@ -36,12 +36,13 @@ interface RenderFormProps {
   onRender: (data: { data: Record<string, any>, utm_params: Record<string, string>, eventId?: string }) => void;
   loading: boolean;
   onBack: () => void;
+  preselectedEventId?: string;
 }
 
-export function RenderForm({ template, onRender, loading, onBack }: RenderFormProps) {
+export function RenderForm({ template, onRender, loading, onBack, preselectedEventId }: RenderFormProps) {
   const [knowledge, setKnowledge] = useState<KnowledgeData | null>(null);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
-  const [eventId, setEventId] = useState('');
+  const [eventId, setEventId] = useState(preselectedEventId || '');
   
   const [formData, setFormData] = useState<Record<string, any>>(() => {
     const initial: Record<string, any> = {};
@@ -131,8 +132,12 @@ export function RenderForm({ template, onRender, loading, onBack }: RenderFormPr
   };
 
   useEffect(() => {
-    loadKnowledge();
-  }, []);
+    if (preselectedEventId) {
+      loadKnowledge(preselectedEventId);
+    } else {
+      loadKnowledge();
+    }
+  }, [preselectedEventId]);
 
   const handleSubmit = () => {
     onRender({

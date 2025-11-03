@@ -8,6 +8,7 @@ import { TemplateUploader } from './TemplateUploader';
 import { AdaptedTemplateView } from './AdaptedTemplateView';
 import { RenderForm } from './RenderForm';
 import { EmailPreview } from './EmailPreview';
+import { EventSelector } from './EventSelector';
 
 const TEMPLATE_ADAPTER_URL = 'https://functions.poehali.dev/9494e2f1-fffb-4efc-9a10-e7763291cd3a';
 
@@ -61,6 +62,7 @@ export default function TemplateAdapterPage() {
   const [adaptedTemplate, setAdaptedTemplate] = useState<AdaptedTemplate | null>(null);
   const [renderResult, setRenderResult] = useState<RenderResult | null>(null);
   const [activeTab, setActiveTab] = useState('upload');
+  const [selectedEventId, setSelectedEventId] = useState<string>('');
 
   const handleAdapt = async (html: string, options: any) => {
     setLoading(true);
@@ -177,17 +179,24 @@ export default function TemplateAdapterPage() {
         </TabsList>
 
         <TabsContent value="upload" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Загрузите HTML шаблон</CardTitle>
-              <CardDescription>
-                Поддерживаются файлы .html или вставьте HTML-код напрямую
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TemplateUploader onAdapt={handleAdapt} loading={loading} />
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <EventSelector 
+              onEventSelect={setSelectedEventId}
+              selectedEventId={selectedEventId}
+            />
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Загрузите HTML шаблон</CardTitle>
+                <CardDescription>
+                  Поддерживаются файлы .html или вставьте HTML-код напрямую
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <TemplateUploader onAdapt={handleAdapt} loading={loading} />
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="adapted" className="mt-6">
@@ -207,6 +216,7 @@ export default function TemplateAdapterPage() {
               onRender={handleRender}
               loading={loading}
               onBack={() => setActiveTab('adapted')}
+              preselectedEventId={selectedEventId}
             />
           )}
         </TabsContent>
