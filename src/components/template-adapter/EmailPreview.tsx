@@ -24,6 +24,15 @@ interface EmailPreviewProps {
 export function EmailPreview({ html, text, onBack, onReset, validation_issues = [], utm_applied = false }: EmailPreviewProps) {
   const [copied, setCopied] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [showZones, setShowZones] = useState(false);
+
+  const highlightedHtml = showZones ? html.replace(
+    /<div[^>]*display:none[^>]*>([^<]*)<\/div>/gi,
+    '<div style="background:rgba(255,200,0,0.3);padding:8px;border:2px dashed orange;margin:4px;"><strong style="color:orange;">📧 PREHEADER:</strong> $1</div>'
+  ).replace(
+    /<a([^>]*)(background|btn|button|cta)[^>]*>([^<]*)<\/a>/gi,
+    '<a$1 style="outline:3px solid #00ff00;outline-offset:2px;">🎯 $3</a>'
+  ) : html;
 
   const handleCopyHtml = () => {
     navigator.clipboard.writeText(html);
@@ -137,9 +146,19 @@ export function EmailPreview({ html, text, onBack, onReset, validation_issues = 
             <TabsContent value="preview" className="mt-4">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    Так письмо будет выглядеть в почтовом клиенте
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground">
+                      Так письмо будет выглядеть в почтовом клиенте
+                    </span>
+                    <Button
+                      variant={showZones ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowZones(!showZones)}
+                    >
+                      <Icon name={showZones ? "EyeOff" : "Eye"} className="mr-2 h-4 w-4" />
+                      {showZones ? 'Скрыть зоны' : 'Показать зоны'}
+                    </Button>
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
@@ -158,12 +177,20 @@ export function EmailPreview({ html, text, onBack, onReset, validation_issues = 
 
                 <div className="border rounded-lg overflow-hidden bg-white">
                   <iframe
-                    srcDoc={html}
+                    srcDoc={highlightedHtml}
                     className="w-full h-[600px]"
                     title="Email Preview"
                     sandbox="allow-same-origin"
                   />
                 </div>
+                {showZones && (
+                  <Alert className="bg-yellow-50 border-yellow-200">
+                    <Icon name="Lightbulb" className="h-4 w-4 text-yellow-600" />
+                    <AlertDescription className="text-yellow-800">
+                      <strong>Подсвечены зоны:</strong> 📧 Preheader (скрытый текст), 🎯 CTA кнопки
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             </TabsContent>
 

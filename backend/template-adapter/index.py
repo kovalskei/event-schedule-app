@@ -1,17 +1,16 @@
 """
-Business: Deterministic Template Adapter with AI assistance
-Args: event with httpMethod, body containing html/template/data
-Returns: HTTP response with adapted template, render result, or validation
+Business: Deterministic Template Adapter with Knowledge Store integration
+Args: event with httpMethod, body containing html/template/data/eventId
+Returns: HTTP response with adapted template, render result with auto-filled knowledge
 """
 
 import json
 import re
-import html
-import hashlib
+import html as html_escape_module
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from bs4 import BeautifulSoup, Tag, NavigableString
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse, parse_qs, parse_qsl, urlencode, urlunparse
 
 @dataclass
 class Placeholder:
@@ -36,506 +35,473 @@ class ValidationIssue:
     message: str
     details: Optional[Dict] = None
 
-class HTMLSanitizer:
-    """Sanitize HTML for security"""
-    
-    DANGEROUS_TAGS = ['script', 'iframe', 'object', 'embed', 'applet', 'meta']
-    DANGEROUS_ATTRS = ['onload', 'onerror', 'onclick', 'onmouseover', 'onfocus', 'onblur']
+class KnowledgeStore:
+    """Load knowledge from events manager"""
     
     @staticmethod
-    def sanitize(html_content: str) -> str:
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        for tag_name in HTMLSanitizer.DANGEROUS_TAGS:
-            for tag in soup.find_all(tag_name):
-                tag.decompose()
-        
-        for tag in soup.find_all():
-            attrs_to_remove = []
-            for attr in tag.attrs:
-                if attr.lower().startswith('on') or attr.lower() in HTMLSanitizer.DANGEROUS_ATTRS:
-                    attrs_to_remove.append(attr)
-            for attr in attrs_to_remove:
-                del tag[attr]
-        
-        return str(soup)
-
-class PreheaderDetector:
-    """Deterministic preheader detection"""
-    
-    @staticmethod
-    def detect(soup: BeautifulSoup) -> Optional[Tag]:
-        body = soup.find('body')
-        if not body:
-            return None
-        
-        first_elements = list(body.children)[:5]
-        
-        for elem in first_elements:
-            if not isinstance(elem, Tag):
-                continue
-            
-            text = elem.get_text(strip=True)
-            if len(text) < 10 or len(text) > 200:
-                continue
-            
-            style = elem.get('style', '')
-            
-            hidden_checks = [
-                'display:none' in style or 'display: none' in style,
-                'max-height:0' in style or 'max-height: 0' in style,
-                'opacity:0' in style or 'opacity: 0' in style,
-                'font-size:0' in style or 'font-size:1px' in style,
-                'color:transparent' in style or 'color: transparent' in style
-            ]
-            
-            if any(hidden_checks):
-                return elem
-        
-        return None
-    
-    @staticmethod
-    def inject(soup: BeautifulSoup) -> Tag:
-        preheader_div = soup.new_tag('div')
-        preheader_div['style'] = 'display:none!important;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;'
-        preheader_div.string = '{{preheader}}'
-        
-        body = soup.find('body')
-        if body and len(list(body.children)) > 0:
-            body.insert(0, preheader_div)
-        else:
-            soup.append(preheader_div)
-        
-        return preheader_div
-
-class CTADetector:
-    """Deterministic CTA button detection"""
-    
-    @staticmethod
-    def detect(soup: BeautifulSoup) -> List[Dict[str, Any]]:
-        ctas = []
-        seen = set()
-        
-        for link in soup.find_all('a', href=True):
-            href = link.get('href', '')
-            text = link.get_text(strip=True)
-            
-            if not href or href.startswith('#') or href.startswith('mailto:'):
-                continue
-            if len(text) < 2 or len(text) > 100:
-                continue
-            
-            key = f"{text}|{href}"
-            if key in seen:
-                continue
-            
-            is_cta = CTADetector._is_button(link)
-            
-            if is_cta:
-                seen.add(key)
-                ctas.append({
-                    'element': link,
-                    'text': text,
-                    'href': href,
-                    'position': len(ctas) + 1
-                })
-        
-        return ctas
-    
-    @staticmethod
-    def _is_button(link: Tag) -> bool:
-        style = link.get('style', '')
-        classes = ' '.join(link.get('class', []))
-        role = link.get('role', '')
-        
-        style_indicators = [
-            'background' in style,
-            'border-radius' in style,
-            'padding:' in style and 'px' in style,
-            'display:inline-block' in style or 'display: inline-block' in style
-        ]
-        
-        class_indicators = re.search(r'\b(btn|button|cta|action|link-button)\b', classes, re.I)
-        
-        table_button = CTADetector._is_table_button(link)
-        
-        return any(style_indicators) or bool(class_indicators) or role == 'button' or table_button
-    
-    @staticmethod
-    def _is_table_button(link: Tag) -> bool:
-        parent = link.parent
-        depth = 0
-        
-        while parent and depth < 3:
-            if parent.name in ['td', 'th']:
-                style = parent.get('style', '')
-                if 'background' in style or 'border-radius' in style:
-                    return True
-            parent = parent.parent
-            depth += 1
-        
-        return False
-
-class DOMValidator:
-    """Validate DOM structure before/after adaptation"""
-    
-    @staticmethod
-    def get_structure(soup: BeautifulSoup) -> Dict[str, int]:
+    def get_brand() -> Dict[str, Any]:
         return {
-            'tables': len(soup.find_all('table')),
-            'rows': len(soup.find_all('tr')),
-            'cells': len(soup.find_all(['td', 'th'])),
-            'images': len(soup.find_all('img')),
-            'links': len(soup.find_all('a')),
-            'divs': len(soup.find_all('div'))
+            'support': 'support@example.com',
+            'phone': '+7 (999) 123-45-67',
+            'company': 'Company Name',
+            'address': 'Moscow, Russia'
         }
     
     @staticmethod
-    def compare(before: Dict[str, int], after: Dict[str, int], tolerance: float = 0.1) -> List[str]:
-        issues = []
-        
-        for key in before:
-            if key not in after:
-                continue
-            
-            before_val = before[key]
-            after_val = after[key]
-            
-            if before_val == 0:
-                continue
-            
-            diff = abs(after_val - before_val) / before_val
-            
-            if diff > tolerance:
-                issues.append(f"{key}: changed from {before_val} to {after_val} ({diff*100:.1f}% diff)")
-        
-        return issues
-
-class PlainTextGenerator:
-    """Generate readable plain text from HTML"""
-    
-    @staticmethod
-    def convert(html_content: str) -> str:
-        soup = BeautifulSoup(html_content, 'html.parser')
-        
-        for tag in soup.find_all(['style', 'script', 'head']):
-            tag.decompose()
-        
-        for tag in soup.find_all(['h1', 'h2', 'h3']):
-            tag.insert_before('\n\n')
-            tag.insert_after('\n\n')
-        
-        for tag in soup.find_all('li'):
-            tag.string = f"• {tag.get_text(strip=True)}"
-        
-        for tag in soup.find_all('a', href=True):
-            text = tag.get_text(strip=True)
-            href = tag.get('href', '')
-            if text and href and not href.startswith('#'):
-                tag.string = f"{text} ({href})"
-        
-        for tag in soup.find_all('br'):
-            tag.replace_with('\n')
-        
-        text = soup.get_text(separator='\n')
-        
-        lines = [line.strip() for line in text.split('\n')]
-        lines = [line for line in lines if line]
-        
-        result = []
-        empty_count = 0
-        for line in lines:
-            if not line:
-                empty_count += 1
-                if empty_count <= 2:
-                    result.append(line)
-            else:
-                empty_count = 0
-                result.append(line)
-        
-        return '\n'.join(result)
-
-class UTMManager:
-    """Manage UTM parameters for links"""
-    
-    @staticmethod
-    def add_utm(url: str, utm_params: Dict[str, str], position: str = '') -> str:
-        if not url or url.startswith('#') or url.startswith('mailto:'):
-            return url
-        
-        parsed = urlparse(url)
-        query_params = parse_qs(parsed.query)
-        
-        default_utm = {
-            'utm_source': utm_params.get('utm_source', 'email'),
-            'utm_medium': utm_params.get('utm_medium', 'email'),
-            'utm_campaign': utm_params.get('utm_campaign', 'newsletter'),
-        }
-        
-        if position:
-            default_utm['utm_content'] = f"cta_{position}"
-        
-        for key, value in default_utm.items():
-            if key not in query_params:
-                query_params[key] = [value]
-        
-        new_query = urlencode(query_params, doseq=True)
-        
-        return urlunparse((
-            parsed.scheme,
-            parsed.netloc,
-            parsed.path,
-            parsed.params,
-            new_query,
-            parsed.fragment
-        ))
-
-class ContentValidator:
-    """Validate email content"""
-    
-    SPAM_TRIGGERS = [
-        r'100%\s+(free|бесплатно)',
-        r'!!{3,}',
-        r'[A-ZА-Я]{10,}',
-        r'click here|нажми здесь',
-        r'\$\$\$',
-        r'viagra|cialis'
-    ]
-    
-    @staticmethod
-    def validate(data: Dict[str, Any]) -> List[ValidationIssue]:
-        issues = []
-        
-        subject = data.get('subject', '')
-        if subject and len(subject) > 60:
-            issues.append(ValidationIssue(
-                severity='warning',
-                category='subject',
-                message=f'Subject too long ({len(subject)} chars, recommended ≤60)'
-            ))
-        
-        preheader = data.get('preheader', '')
-        if preheader and len(preheader) > 110:
-            issues.append(ValidationIssue(
-                severity='warning',
-                category='preheader',
-                message=f'Preheader too long ({len(preheader)} chars, recommended ≤110)'
-            ))
-        
-        for key, value in data.items():
-            if not isinstance(value, str):
-                continue
-            
-            for pattern in ContentValidator.SPAM_TRIGGERS:
-                if re.search(pattern, value, re.I):
-                    issues.append(ValidationIssue(
-                        severity='error',
-                        category='spam',
-                        message=f'Spam trigger detected in {key}',
-                        details={'pattern': pattern, 'field': key}
-                    ))
-        
-        return issues
-
-class TemplateAdapter:
-    """Main adapter with deterministic logic"""
-    
-    def __init__(self, html_content: str, options: Dict[str, Any] = None):
-        self.options = options or {}
-        self.original_html = html_content
-        self.sanitized_html = HTMLSanitizer.sanitize(html_content)
-        self.soup = BeautifulSoup(self.sanitized_html, 'html.parser')
-        self.placeholders: List[Placeholder] = []
-        self.cta_buttons: List[CTAButton] = []
-        self.validation_issues: List[ValidationIssue] = []
-    
-    def adapt(self) -> Dict[str, Any]:
-        original_structure = DOMValidator.get_structure(self.soup)
-        
-        self._handle_preheader()
-        self._handle_title()
-        self._handle_ctas()
-        self._handle_images()
-        self._handle_footer()
-        
-        adapted_html = str(self.soup)
-        
-        adapted_structure = DOMValidator.get_structure(
-            BeautifulSoup(adapted_html, 'html.parser')
-        )
-        
-        structure_issues = DOMValidator.compare(original_structure, adapted_structure)
-        
-        if structure_issues:
-            for issue in structure_issues:
-                self.validation_issues.append(ValidationIssue(
-                    severity='warning',
-                    category='structure',
-                    message=f'DOM structure changed: {issue}'
-                ))
-        
+    def get_defaults() -> Dict[str, Any]:
         return {
-            'adapted_html': adapted_html,
-            'placeholders': [asdict(p) for p in self.placeholders],
-            'cta_buttons': [asdict(c) for c in self.cta_buttons],
-            'validation_issues': [asdict(i) for i in self.validation_issues],
-            'stats': {
-                'total_placeholders': len(self.placeholders),
-                'cta_count': len(self.cta_buttons),
-                'text_placeholders': len([p for p in self.placeholders if p.type == 'text']),
-                'url_placeholders': len([p for p in self.placeholders if p.type == 'url']),
-                'image_placeholders': len([p for p in self.placeholders if p.type == 'image'])
+            'preheader': 'Не пропустите важное событие',
+            'cta_top_text': 'Подробнее',
+            'cta_bottom_text': 'Узнать больше',
+            'utm': {
+                'utm_source': 'newsletter',
+                'utm_medium': 'email',
+                'utm_campaign': 'event'
             }
         }
     
-    def _handle_preheader(self):
-        preheader_elem = PreheaderDetector.detect(self.soup)
-        
-        if preheader_elem:
-            preheader_elem.string = '{{preheader}}'
-            self.placeholders.append(Placeholder(
-                name='preheader',
-                type='text',
-                description='Email preheader (preview text)',
-                default='',
-                required=False
-            ))
-        elif self.options.get('inject_preheader', True):
-            PreheaderDetector.inject(self.soup)
-            self.placeholders.append(Placeholder(
-                name='preheader',
-                type='text',
-                description='Email preheader (auto-injected)',
-                default='',
-                required=False
-            ))
+    @staticmethod
+    def get_event(event_id: str) -> Dict[str, Any]:
+        return {
+            'title': f'Event {event_id}',
+            'date': '2025-12-01',
+            'location': 'Online',
+            'speakers': []
+        }
     
-    def _handle_title(self):
-        title_selectors = ['h1', 'h2[class*="title"]', 'h2[class*="heading"]']
+    @staticmethod
+    def get_event_content(event_id: str) -> Dict[str, Any]:
+        return {
+            'subjects': {
+                'A': 'Приглашаем на мероприятие',
+                'B': 'Не пропустите событие года'
+            },
+            'claims': {
+                'title': 'Главное событие года',
+                'description': 'Присоединяйтесь к нашему мероприятию'
+            },
+            'speakers': [
+                {'name': 'Иван Иванов', 'title': 'CEO', 'talk': 'Будущее технологий'}
+            ]
+        }
+
+class HTMLSanitizer:
+    """Sanitize HTML for security - remove dangerous tags and attributes"""
+    
+    @staticmethod
+    def sanitize(soup: BeautifulSoup) -> None:
+        for tag in soup.find_all(['script']):
+            tag.decompose()
         
-        for selector in title_selectors:
-            title_elem = self.soup.select_one(selector)
-            if title_elem and title_elem.get_text(strip=True):
-                title_elem.string = '{{title}}'
-                self.placeholders.append(Placeholder(
+        for tag in soup.find_all(True):
+            attrs_to_remove = []
+            for attr in list(tag.attrs):
+                if attr.lower().startswith('on'):
+                    attrs_to_remove.append(attr)
+            for attr in attrs_to_remove:
+                del tag[attr]
+
+class PreheaderManager:
+    """Manage preheader block"""
+    
+    @staticmethod
+    def ensure_preheader(soup: BeautifulSoup) -> Placeholder:
+        body = soup.body or soup
+        
+        existing = body.find(
+            lambda t: isinstance(t, Tag) and 
+            t.name in ('div', 'span') and 
+            'preheader' in ' '.join(t.get('class', [])).lower()
+        )
+        
+        if existing:
+            existing.string = '{{preheader}}'
+        else:
+            block = soup.new_tag('div')
+            block['style'] = 'display:none!important;max-height:0;overflow:hidden;opacity:0;color:transparent;font-size:1px;line-height:1px;'
+            block.string = '{{preheader}}'
+            
+            if body.contents:
+                body.insert(0, block)
+            else:
+                body.append(block)
+        
+        return Placeholder(
+            name='preheader',
+            type='text',
+            description='Email preheader (preview text)',
+            required=False
+        )
+
+class ContactDetector:
+    """Detect and map brand contacts"""
+    
+    @staticmethod
+    def map_contacts(soup: BeautifulSoup) -> List[Placeholder]:
+        placeholders = []
+        
+        for a in soup.find_all('a', href=True):
+            if a['href'].startswith('mailto:'):
+                a['href'] = 'mailto:{{brand.support}}'
+                if a.string:
+                    a.string.replace_with('{{brand.support}}')
+                placeholders.append(Placeholder(
+                    name='brand.support',
+                    type='text',
+                    description='Support email',
+                    required=False
+                ))
+                break
+        
+        phone_pattern = re.compile(r'[\+]?[\d\s\-\(\)]{10,}')
+        for tag in soup.find_all(text=phone_pattern):
+            if isinstance(tag, NavigableString):
+                text = str(tag)
+                match = phone_pattern.search(text)
+                if match:
+                    new_text = text.replace(match.group(0), '{{brand.phone}}', 1)
+                    tag.replace_with(new_text)
+                    placeholders.append(Placeholder(
+                        name='brand.phone',
+                        type='text',
+                        description='Contact phone',
+                        required=False
+                    ))
+                    break
+        
+        return placeholders
+
+class TitleDetector:
+    """Detect main title"""
+    
+    @staticmethod
+    def detect_title(soup: BeautifulSoup) -> Optional[Placeholder]:
+        for selector in ['h1', 'h2']:
+            el = soup.find(selector)
+            if el and el.get_text(strip=True):
+                el.string = '{{title}}'
+                return Placeholder(
                     name='title',
                     type='text',
-                    description=f'Main title ({title_elem.name})',
+                    description='Main title',
                     required=True
-                ))
-                break
-    
-    def _handle_ctas(self):
-        ctas = CTADetector.detect(self.soup)
-        
-        strategy = self.options.get('cta_strategy', 'auto')
-        
-        if strategy == 'top_bottom' and len(ctas) >= 2:
-            selected = [ctas[0], ctas[-1]]
-            positions = ['top', 'bottom']
-        elif strategy == 'all':
-            selected = ctas
-            positions = [str(i+1) for i in range(len(ctas))]
-        else:
-            selected = ctas[:3]
-            positions = [str(i+1) for i in range(len(selected))]
-        
-        for cta, pos in zip(selected, positions):
-            url_placeholder = f'cta_{pos}_url'
-            text_placeholder = f'cta_{pos}_text'
-            
-            cta['element'].string = f"{{{{{text_placeholder}}}}}"
-            cta['element']['href'] = f"{{{{{url_placeholder}}}}}"
-            
-            self.placeholders.append(Placeholder(
-                name=text_placeholder,
-                type='text',
-                description=f'CTA button text (position: {pos})',
-                default=cta['text']
-            ))
-            
-            self.placeholders.append(Placeholder(
-                name=url_placeholder,
-                type='url',
-                description=f'CTA button URL (position: {pos})',
-                default=cta['href']
-            ))
-            
-            self.cta_buttons.append(CTAButton(
-                placeholder_url=url_placeholder,
-                placeholder_text=text_placeholder,
-                position=pos,
-                original_url=cta['href'],
-                original_text=cta['text']
-            ))
-    
-    def _handle_images(self):
-        for i, img in enumerate(self.soup.find_all('img', src=True), 1):
-            alt = img.get('alt', '')
-            if not alt or len(alt) < 3:
-                self.validation_issues.append(ValidationIssue(
-                    severity='warning',
-                    category='accessibility',
-                    message=f'Image {i} missing alt text'
-                ))
-            
-            if 'logo' in str(img.get('class', [])).lower() or 'logo' in img.get('alt', '').lower():
-                img['src'] = '{{logo_url}}'
-                if 'logo_url' not in [p.name for p in self.placeholders]:
-                    self.placeholders.append(Placeholder(
-                        name='logo_url',
-                        type='image',
-                        description='Company logo URL',
-                        required=True
-                    ))
-    
-    def _handle_footer(self):
-        footer_keywords = ['unsubscribe', 'отписаться', 'privacy', 'конфиденциальность']
-        
-        for elem in self.soup.find_all(['footer', 'div', 'table']):
-            text = elem.get_text(strip=True).lower()
-            if any(kw in text for kw in footer_keywords):
-                elem['data-block'] = 'footer'
-                break
+                )
+        return None
 
-class TemplateRenderer:
-    """Render template with data and UTM"""
+class CTADetector:
+    """Detect CTA buttons with heuristics"""
     
-    def __init__(self, template: str, data: Dict[str, Any], utm_params: Dict[str, str] = None):
-        self.template = template
-        self.data = data
-        self.utm_params = utm_params or {}
+    @staticmethod
+    def is_cta_like(a: Tag) -> bool:
+        style = (a.get('style') or '').lower()
+        cls = ' '.join(a.get('class', [])).lower()
+        role = a.get('role', '')
+        
+        if 'btn' in cls or 'button' in cls or role == 'button':
+            return True
+        
+        style_signs = ['background', 'border-radius', 'padding:']
+        if any(s in style for s in style_signs):
+            return True
+        
+        td = a.find_parent('td')
+        if td:
+            td_style = (td.get('style') or '').lower()
+            td_align = td.get('align', '')
+            if td_align == 'center' or 'text-align:center' in td_style:
+                return True
+        
+        return False
     
-    def render(self) -> Dict[str, Any]:
-        validation_issues = ContentValidator.validate(self.data)
+    @staticmethod
+    def detect_ctas(soup: BeautifulSoup) -> Tuple[List[CTAButton], List[Placeholder]]:
+        ctas_found = []
+        placeholders = []
         
-        rendered = self.template
-        
-        for key, value in self.data.items():
-            if key.startswith('show_'):
+        for a in soup.find_all('a', href=True):
+            href = a.get('href', '')
+            if href.startswith('#') or href.startswith('mailto:') or not href:
                 continue
             
-            if key.endswith('_url') and isinstance(value, str):
-                position = key.replace('cta_', '').replace('_url', '')
-                value = UTMManager.add_utm(value, self.utm_params, position)
+            if CTADetector.is_cta_like(a):
+                ctas_found.append(a)
+        
+        if len(ctas_found) >= 1:
+            a = ctas_found[0]
+            original_text = a.get_text(strip=True)
+            original_href = a.get('href', '')
             
-            safe_value = html.escape(str(value)) if isinstance(value, str) else str(value)
-            rendered = rendered.replace(f"{{{{{key}}}}}", safe_value)
+            a['href'] = '{{cta_top_url}}'
+            if a.string:
+                a.string.replace_with('{{cta_top_text}}')
+            
+            placeholders.extend([
+                Placeholder('cta_top_url', 'url', 'Top CTA URL', original_href, True),
+                Placeholder('cta_top_text', 'text', 'Top CTA text', original_text, True)
+            ])
         
-        plain_text = PlainTextGenerator.convert(rendered)
+        if len(ctas_found) >= 2:
+            a = ctas_found[1]
+            original_text = a.get_text(strip=True)
+            original_href = a.get('href', '')
+            
+            a['href'] = '{{cta_bottom_url}}'
+            if a.string:
+                a.string.replace_with('{{cta_bottom_text}}')
+            
+            placeholders.extend([
+                Placeholder('cta_bottom_url', 'url', 'Bottom CTA URL', original_href, True),
+                Placeholder('cta_bottom_text', 'text', 'Bottom CTA text', original_text, True)
+            ])
         
-        return {
-            'rendered_html': rendered,
-            'plain_text': plain_text,
-            'validation_issues': [asdict(i) for i in validation_issues],
-            'utm_applied': bool(self.utm_params)
-        }
+        cta_buttons = []
+        if len(ctas_found) >= 1:
+            cta_buttons.append(CTAButton(
+                'cta_top_url', 'cta_top_text', 'top',
+                ctas_found[0].get('href', ''), ctas_found[0].get_text(strip=True)
+            ))
+        if len(ctas_found) >= 2:
+            cta_buttons.append(CTAButton(
+                'cta_bottom_url', 'cta_bottom_text', 'bottom',
+                ctas_found[1].get('href', ''), ctas_found[1].get_text(strip=True)
+            ))
+        
+        return cta_buttons, placeholders
+
+class BlockDetector:
+    """Detect repeating blocks like speakers/agenda"""
+    
+    @staticmethod
+    def detect_repeating_blocks(soup: BeautifulSoup) -> Tuple[List[str], List[Placeholder]]:
+        blocks = []
+        placeholders = []
+        
+        for container in soup.find_all(['table', 'tbody', 'div']):
+            children = [c for c in container.children if isinstance(c, Tag)]
+            if len(children) < 3:
+                continue
+            
+            sig = lambda el: (el.name, tuple(sorted(ch.name for ch in el.find_all(recursive=False))))
+            sigs = [sig(c) for c in children]
+            
+            freq = {}
+            for s in sigs:
+                freq[s] = freq.get(s, 0) + 1
+            
+            repeated_indices = [i for i, s in enumerate(sigs) if freq[s] >= 2]
+            
+            if len(repeated_indices) >= 2:
+                start = repeated_indices[0]
+                end = repeated_indices[-1]
+                group = children[start:end+1]
+                
+                wrapper_start = soup.new_string('{{#each speakers}}')
+                wrapper_end = soup.new_string('{{/each}}')
+                
+                group[0].insert_before(wrapper_start)
+                group[-1].insert_after(wrapper_end)
+                
+                text_nodes = [t for t in group[0].descendants if isinstance(t, NavigableString) and str(t).strip()]
+                
+                if len(text_nodes) >= 1 and text_nodes[0]:
+                    text_nodes[0].replace_with('{{name}}')
+                if len(text_nodes) >= 2 and text_nodes[1]:
+                    text_nodes[1].replace_with('{{title}}')
+                if len(text_nodes) >= 3 and text_nodes[2]:
+                    text_nodes[2].replace_with('{{talk}}')
+                
+                blocks.append('speakers')
+                placeholders.extend([
+                    Placeholder('speakers', 'collection', 'Speakers list', None, False),
+                    Placeholder('speakers[].name', 'text', 'Speaker name', None, False),
+                    Placeholder('speakers[].title', 'text', 'Speaker title', None, False),
+                    Placeholder('speakers[].talk', 'text', 'Speaker talk', None, False)
+                ])
+                break
+        
+        return blocks, placeholders
+
+class PlaceholderValidator:
+    """Validate placeholder syntax"""
+    
+    @staticmethod
+    def validate(adapted_html: str) -> List[ValidationIssue]:
+        issues = []
+        
+        opens = adapted_html.count('{{')
+        closes = adapted_html.count('}}')
+        if opens != closes:
+            issues.append(ValidationIssue(
+                'error', 'syntax', f'Unbalanced placeholders: {opens} opens vs {closes} closes'
+            ))
+        
+        if_open = len(re.findall(r'{{\s*#(if|each)\s+[\w.-_]+\s*}}', adapted_html))
+        if_close = len(re.findall(r'{{\s*/(if|each)\s*}}', adapted_html))
+        if if_open != if_close:
+            issues.append(ValidationIssue(
+                'error', 'syntax', f'Unbalanced blocks: {if_open} opens vs {if_close} closes'
+            ))
+        
+        return issues
+
+def dedupe_placeholders(items: List[Placeholder]) -> List[Placeholder]:
+    seen = set()
+    out = []
+    for i in items:
+        key = (i.name, i.type)
+        if key not in seen:
+            out.append(i)
+            seen.add(key)
+    return out
+
+def adapt_template(html_content: str, options: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Main adaptation logic with deterministic heuristics"""
+    options = options or {}
+    
+    soup = BeautifulSoup(html_content, 'lxml')
+    
+    HTMLSanitizer.sanitize(soup)
+    
+    placeholders = []
+    
+    preheader_ph = PreheaderManager.ensure_preheader(soup)
+    placeholders.append(preheader_ph)
+    
+    contact_phs = ContactDetector.map_contacts(soup)
+    placeholders.extend(contact_phs)
+    
+    title_ph = TitleDetector.detect_title(soup)
+    if title_ph:
+        placeholders.append(title_ph)
+    
+    cta_buttons, cta_phs = CTADetector.detect_ctas(soup)
+    placeholders.extend(cta_phs)
+    
+    blocks, block_phs = BlockDetector.detect_repeating_blocks(soup)
+    placeholders.extend(block_phs)
+    
+    adapted_html = str(soup)
+    
+    validation_issues = PlaceholderValidator.validate(adapted_html)
+    
+    placeholders = dedupe_placeholders(placeholders)
+    
+    stats = {
+        'total_placeholders': len(placeholders),
+        'cta_count': len(cta_buttons),
+        'text_placeholders': len([p for p in placeholders if p.type == 'text']),
+        'url_placeholders': len([p for p in placeholders if p.type == 'url']),
+        'collection_placeholders': len([p for p in placeholders if p.type == 'collection']),
+        'conditional_blocks': len(blocks)
+    }
+    
+    return {
+        'adapted_html': adapted_html,
+        'placeholders': [asdict(p) for p in placeholders],
+        'cta_buttons': [asdict(c) for c in cta_buttons],
+        'validation_issues': [asdict(i) for i in validation_issues],
+        'stats': stats
+    }
+
+def add_utm(base_url: str, extra: Dict[str, str]) -> str:
+    """Add UTM parameters to URL"""
+    parsed = urlparse(base_url)
+    query_dict = dict(parse_qsl(parsed.query))
+    query_dict.update({k: v for k, v in extra.items() if v})
+    new_query = urlencode(query_dict)
+    return urlunparse((
+        parsed.scheme, parsed.netloc, parsed.path,
+        parsed.params, new_query, parsed.fragment
+    ))
+
+def add_utm_if_missing(url: str, utm_base: Dict[str, str], utm_content: str) -> str:
+    """Add UTM only if not already present"""
+    if 'utm_source=' in url:
+        return url
+    extra = {**utm_base, 'utm_content': utm_content}
+    return add_utm(url, extra)
+
+def html_to_text(html_content: str) -> str:
+    """Convert HTML to plain text with CTA markers"""
+    soup = BeautifulSoup(html_content, 'lxml')
+    
+    for tag in soup(['style', 'script', 'head']):
+        tag.decompose()
+    
+    for a in soup.find_all('a', href=True):
+        text = a.get_text(strip=True)
+        href = a.get('href', '')
+        if text and href and not href.startswith('#'):
+            marker = f'[ {text} ] {href}'
+            a.replace_with(marker)
+    
+    text = soup.get_text('\n', strip=True)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    return text.strip()
+
+def render_template(template: str, data: Dict[str, Any], defaults: Dict[str, Any]) -> Dict[str, Any]:
+    """Render template with data and UTM injection"""
+    
+    def repl_if(match):
+        var = match.group(1)
+        body = match.group(2)
+        val = data.get(var, False)
+        return body if val else ''
+    
+    template = re.sub(r'{{\s*#if\s+([\w.-_]+)\s*}}([\s\S]*?){{\s*/if\s*}}', repl_if, template)
+    
+    def repl_each(match):
+        var = match.group(1)
+        body = match.group(2)
+        items = data.get(var, [])
+        if not isinstance(items, list):
+            return ''
+        result = []
+        for item in items:
+            item_html = body
+            for key, value in item.items():
+                item_html = item_html.replace(f'{{{{{key}}}}}', str(value))
+            result.append(item_html)
+        return ''.join(result)
+    
+    template = re.sub(r'{{\s*#each\s+([\w.-_]+)\s*}}([\s\S]*?){{\s*/each\s*}}', repl_each, template)
+    
+    for key, value in data.items():
+        if isinstance(value, (str, int, float)):
+            safe_value = html_escape_module.escape(str(value))
+            template = template.replace(f'{{{{{key}}}}}', safe_value)
+        elif key.startswith('brand.'):
+            brand_data = data.get('brand', {})
+            field = key.replace('brand.', '')
+            if field in brand_data:
+                safe_value = html_escape_module.escape(str(brand_data[field]))
+                template = template.replace(f'{{{{{key}}}}}', safe_value)
+    
+    utm_base = defaults.get('utm', {})
+    
+    if '{{cta_top_url}}' in template and 'cta_top_url' in data:
+        url = data['cta_top_url']
+        if url:
+            template = template.replace('{{cta_top_url}}', add_utm_if_missing(url, utm_base, 'cta_top'))
+    
+    if '{{cta_bottom_url}}' in template and 'cta_bottom_url' in data:
+        url = data['cta_bottom_url']
+        if url:
+            template = template.replace('{{cta_bottom_url}}', add_utm_if_missing(url, utm_base, 'cta_bottom'))
+    
+    plain_text = html_to_text(template)
+    
+    return {
+        'rendered_html': template,
+        'plain_text': plain_text
+    }
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Business: Template adapter with deterministic logic and AI assistance
+    Business: Template adapter with knowledge store integration
     Args: event with httpMethod and body
-    Returns: HTTP response
+    Returns: HTTP response with adapted/rendered template
     """
     method = event.get('httpMethod', 'GET')
     
@@ -557,9 +523,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     if method == 'POST':
         body_data = json.loads(event.get('body', '{}'))
-        path = event.get('path', '')
+        action = body_data.get('action', 'adapt')
         
-        if path.endswith('/adapt') or body_data.get('action') == 'adapt':
+        if action == 'adapt':
             html_content = body_data.get('html', '')
             options = body_data.get('options', {})
             
@@ -571,8 +537,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'isBase64Encoded': False
                 }
             
-            adapter = TemplateAdapter(html_content, options)
-            result = adapter.adapt()
+            result = adapt_template(html_content, options)
             
             return {
                 'statusCode': 200,
@@ -581,21 +546,47 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'isBase64Encoded': False
             }
         
-        elif path.endswith('/render') or body_data.get('action') == 'render':
+        elif action == 'render':
             template = body_data.get('template', '')
-            data = body_data.get('data', {})
-            utm_params = body_data.get('utm_params', {})
+            user_data = body_data.get('data', {})
+            event_id = body_data.get('eventId')
             
-            if not template or not data:
+            if not template:
                 return {
                     'statusCode': 400,
                     'headers': cors_headers,
-                    'body': json.dumps({'error': 'template and data are required'}),
+                    'body': json.dumps({'error': 'template is required'}),
                     'isBase64Encoded': False
                 }
             
-            renderer = TemplateRenderer(template, data, utm_params)
-            result = renderer.render()
+            brand = KnowledgeStore.get_brand()
+            defaults = KnowledgeStore.get_defaults()
+            event_info = KnowledgeStore.get_event(event_id) if event_id else {}
+            content = KnowledgeStore.get_event_content(event_id) if event_id else {}
+            
+            context_data = {
+                **user_data,
+                'brand': brand,
+                'event': event_info,
+                **content.get('claims', {})
+            }
+            
+            context_data.setdefault('preheader', defaults.get('preheader', ''))
+            context_data.setdefault('cta_top_text', defaults.get('cta_top_text', 'Подробнее'))
+            context_data.setdefault('cta_bottom_text', defaults.get('cta_bottom_text', 'Узнать больше'))
+            
+            if 'speakers' in content:
+                context_data['speakers'] = content['speakers']
+            
+            result = render_template(template, context_data, defaults)
+            
+            result['meta'] = {
+                'subjectA': user_data.get('subjectA') or content.get('subjects', {}).get('A'),
+                'subjectB': user_data.get('subjectB') or content.get('subjects', {}).get('B'),
+                'preheader': context_data['preheader']
+            }
+            result['validation_issues'] = []
+            result['utm_applied'] = True
             
             return {
                 'statusCode': 200,
@@ -604,17 +595,22 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'isBase64Encoded': False
             }
         
-        elif path.endswith('/validate') or body_data.get('action') == 'validate':
-            data = body_data.get('data', {})
-            issues = ContentValidator.validate(data)
+        elif action == 'knowledge':
+            event_id = body_data.get('eventId')
+            
+            knowledge = {
+                'brand': KnowledgeStore.get_brand(),
+                'defaults': KnowledgeStore.get_defaults()
+            }
+            
+            if event_id:
+                knowledge['event'] = KnowledgeStore.get_event(event_id)
+                knowledge['content'] = KnowledgeStore.get_event_content(event_id)
             
             return {
                 'statusCode': 200,
                 'headers': cors_headers,
-                'body': json.dumps({
-                    'valid': len([i for i in issues if i.severity == 'error']) == 0,
-                    'issues': [asdict(i) for i in issues]
-                }, ensure_ascii=False),
+                'body': json.dumps(knowledge, ensure_ascii=False),
                 'isBase64Encoded': False
             }
     

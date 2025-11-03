@@ -1,84 +1,77 @@
 {
   "tests": [
     {
-      "name": "Adapt template with CTA and preheader",
+      "name": "Adapt template with contacts and CTA",
       "method": "POST",
       "path": "/",
       "body": {
         "action": "adapt",
-        "html": "<!DOCTYPE html><html><body><div style=\"display:none;max-height:0;\">Preview text</div><h1>Welcome</h1><p>Check out our offer</p><a href=\"https://example.com\" style=\"background:#007bff;padding:10px 20px;color:white;border-radius:5px;\">Learn More</a></body></html>",
-        "options": {
-          "cta_strategy": "auto",
-          "inject_preheader": false
-        }
+        "html": "<!DOCTYPE html><html><body><h1>Welcome Event</h1><p>Contact us: <a href=\"mailto:test@example.com\">test@example.com</a> or call +7 999 123-45-67</p><a href=\"https://example.com/register\" style=\"background:#007bff;padding:10px;border-radius:5px;\">Register Now</a></body></html>",
+        "options": {}
       },
       "expectedStatus": 200,
       "expectedBody": {
         "stats": {
-          "total_placeholders": 4,
           "cta_count": 1
         }
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Render template with data and UTM",
+      "name": "Render with Knowledge Store auto-fill",
       "method": "POST",
       "path": "/",
       "body": {
         "action": "render",
-        "template": "<h1>{{title}}</h1><a href=\"{{cta_1_url}}\">{{cta_1_text}}</a>",
+        "template": "<h1>{{title}}</h1><p>{{preheader}}</p><a href=\"{{cta_top_url}}\">{{cta_top_text}}</a><p>Contact: {{brand.support}}</p>",
         "data": {
-          "title": "Special Offer",
-          "cta_1_url": "https://example.com/promo",
-          "cta_1_text": "Get Started"
+          "title": "Special Event"
         },
-        "utm_params": {
-          "utm_source": "newsletter",
-          "utm_medium": "email",
-          "utm_campaign": "launch"
-        }
+        "eventId": "test-event-123"
       },
       "expectedStatus": 200,
       "expectedBody": {
         "rendered_html": "string",
         "plain_text": "string",
-        "utm_applied": true
+        "utm_applied": true,
+        "meta": {
+          "preheader": "string"
+        }
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Validate content with spam triggers",
+      "name": "Get knowledge data",
       "method": "POST",
       "path": "/",
       "body": {
-        "action": "validate",
-        "data": {
-          "subject": "100% FREE OFFER!!!",
-          "preheader": "This is a test preheader that is definitely way too long for email standards and will be truncated by most email clients"
-        }
+        "action": "knowledge",
+        "eventId": "test-event"
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "valid": false
+        "brand": {
+          "support": "string"
+        },
+        "defaults": {
+          "preheader": "string"
+        }
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Auto-inject preheader if missing",
+      "name": "Detect repeating speaker blocks",
       "method": "POST",
       "path": "/",
       "body": {
         "action": "adapt",
-        "html": "<html><body><h1>Title</h1><p>Content</p></body></html>",
-        "options": {
-          "inject_preheader": true
-        }
+        "html": "<html><body><h1>Event</h1><div><div><h3>John Doe</h3><p>CEO</p><span>Future of Tech</span></div><div><h3>Jane Smith</h3><p>CTO</p><span>AI Revolution</span></div><div><h3>Bob Johnson</h3><p>VP</p><span>Cloud Computing</span></div></div></body></html>",
+        "options": {}
       },
       "expectedStatus": 200,
       "expectedBody": {
         "stats": {
-          "total_placeholders": 2
+          "collection_placeholders": 1
         }
       },
       "bodyMatcher": "partial"

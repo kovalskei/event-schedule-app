@@ -110,7 +110,7 @@ export default function TemplateAdapterPage() {
           action: 'render',
           template: adaptedTemplate.adapted_html,
           data: renderData.data,
-          utm_params: renderData.utm_params || {}
+          eventId: renderData.eventId
         })
       });
 
