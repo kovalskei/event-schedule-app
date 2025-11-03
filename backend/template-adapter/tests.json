@@ -1,69 +1,85 @@
 {
   "tests": [
     {
-      "name": "Adapt simple HTML template",
+      "name": "Adapt template with CTA and preheader",
       "method": "POST",
       "path": "/",
       "body": {
         "action": "adapt",
-        "html": "<!DOCTYPE html><html><body><div style=\"display:none\">Preview text</div><h1>Main Title</h1><p>Content here</p><a href=\"https://example.com\" style=\"background:#007bff;padding:10px;color:white;\">Click Here</a></body></html>",
+        "html": "<!DOCTYPE html><html><body><div style=\"display:none;max-height:0;\">Preview text</div><h1>Welcome</h1><p>Check out our offer</p><a href=\"https://example.com\" style=\"background:#007bff;padding:10px 20px;color:white;border-radius:5px;\">Learn More</a></body></html>",
         "options": {
-          "ctaStrategy": "auto",
-          "preheaderFallback": true
+          "cta_strategy": "auto",
+          "inject_preheader": false
         }
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "success": true
+        "stats": {
+          "total_placeholders": 4,
+          "cta_count": 1
+        }
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Render template with data",
+      "name": "Render template with data and UTM",
       "method": "POST",
       "path": "/",
       "body": {
         "action": "render",
-        "template": "<html><body><h1>{{title}}</h1><a href=\"{{cta_url}}\">{{cta_text}}</a></body></html>",
+        "template": "<h1>{{title}}</h1><a href=\"{{cta_1_url}}\">{{cta_1_text}}</a>",
         "data": {
-          "title": "Welcome to Our Event",
-          "cta_url": "https://example.com/register",
-          "cta_text": "Register Now"
+          "title": "Special Offer",
+          "cta_1_url": "https://example.com/promo",
+          "cta_1_text": "Get Started"
+        },
+        "utm_params": {
+          "utm_source": "newsletter",
+          "utm_medium": "email",
+          "utm_campaign": "launch"
         }
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "success": true,
-        "html": "string",
-        "text": "string"
+        "rendered_html": "string",
+        "plain_text": "string",
+        "utm_applied": true
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Validate template",
+      "name": "Validate content with spam triggers",
       "method": "POST",
       "path": "/",
       "body": {
         "action": "validate",
-        "template": "<html><body><h1>{{title}}</h1><div>{{preheader}}</div><a href=\"{{cta_top_url}}\">{{cta_top_text}}</a></body></html>"
+        "data": {
+          "subject": "100% FREE OFFER!!!",
+          "preheader": "This is a test preheader that is definitely way too long for email standards and will be truncated by most email clients"
+        }
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "success": true
+        "valid": false
       },
       "bodyMatcher": "partial"
     },
     {
-      "name": "Extract placeholders",
+      "name": "Auto-inject preheader if missing",
       "method": "POST",
       "path": "/",
       "body": {
-        "action": "extract",
-        "template": "<html><body><h1>{{title}}</h1><p>{{event.name}}</p><span>{{brand.support}}</span></body></html>"
+        "action": "adapt",
+        "html": "<html><body><h1>Title</h1><p>Content</p></body></html>",
+        "options": {
+          "inject_preheader": true
+        }
       },
       "expectedStatus": 200,
       "expectedBody": {
-        "success": true
+        "stats": {
+          "total_placeholders": 2
+        }
       },
       "bodyMatcher": "partial"
     }

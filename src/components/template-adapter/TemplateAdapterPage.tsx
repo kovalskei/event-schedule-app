@@ -11,31 +11,48 @@ import { EmailPreview } from './EmailPreview';
 
 const TEMPLATE_ADAPTER_URL = 'https://functions.poehali.dev/9494e2f1-fffb-4efc-9a10-e7763291cd3a';
 
+interface Placeholder {
+  name: string;
+  type: string;
+  description: string;
+  default?: string;
+  required: boolean;
+}
+
+interface CTAButton {
+  placeholder_url: string;
+  placeholder_text: string;
+  position: string;
+  original_url: string;
+  original_text: string;
+}
+
+interface ValidationIssue {
+  severity: string;
+  category: string;
+  message: string;
+  details?: any;
+}
+
 interface AdaptedTemplate {
-  originalHtml: string;
-  html: string;
-  placeholders: Array<{
-    name: string;
-    type: string;
-    selectorHint?: string;
-  }>;
-  meta: {
-    suggestedSubjects: string[];
-    supportsPreheader: boolean;
-    detectedCtas: Array<{
-      textPlaceholder: string;
-      urlPlaceholder: string;
-      originalText: string;
-      originalHref: string;
-    }>;
-    detectedFooter: boolean;
-    hasBlocks: string[];
+  adapted_html: string;
+  placeholders: Placeholder[];
+  cta_buttons: CTAButton[];
+  validation_issues: ValidationIssue[];
+  stats: {
+    total_placeholders: number;
+    cta_count: number;
+    text_placeholders: number;
+    url_placeholders: number;
+    image_placeholders: number;
   };
 }
 
 interface RenderResult {
-  html: string;
-  text: string;
+  rendered_html: string;
+  plain_text: string;
+  validation_issues: ValidationIssue[];
+  utm_applied: boolean;
 }
 
 export default function TemplateAdapterPage() {
@@ -66,11 +83,11 @@ export default function TemplateAdapterPage() {
 
       const data = await response.json();
 
-      if (!data.success) {
-        throw new Error(data.error || 'Adaptation failed');
+      if (data.error) {
+        throw new Error(data.error);
       }
 
-      setAdaptedTemplate(data.adapted);
+      setAdaptedTemplate(data);
       setActiveTab('adapted');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -91,8 +108,9 @@ export default function TemplateAdapterPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'render',
-          template: adaptedTemplate.html,
-          data: renderData
+          template: adaptedTemplate.adapted_html,
+          data: renderData.data,
+          utm_params: renderData.utm_params || {}
         })
       });
 
@@ -102,14 +120,11 @@ export default function TemplateAdapterPage() {
 
       const data = await response.json();
 
-      if (!data.success) {
-        throw new Error(data.error || 'Render failed');
+      if (data.error) {
+        throw new Error(data.error);
       }
 
-      setRenderResult({
-        html: data.html,
-        text: data.text
-      });
+      setRenderResult(data);
       setActiveTab('preview');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -199,8 +214,10 @@ export default function TemplateAdapterPage() {
         <TabsContent value="preview" className="mt-6">
           {renderResult && (
             <EmailPreview
-              html={renderResult.html}
-              text={renderResult.text}
+              html={renderResult.rendered_html}
+              text={renderResult.plain_text}
+              validation_issues={renderResult.validation_issues}
+              utm_applied={renderResult.utm_applied}
               onBack={() => setActiveTab('render')}
               onReset={handleReset}
             />

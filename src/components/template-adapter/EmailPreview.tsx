@@ -6,14 +6,22 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import Icon from '@/components/ui/icon';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
+interface ValidationIssue {
+  severity: string;
+  category: string;
+  message: string;
+}
+
 interface EmailPreviewProps {
   html: string;
   text: string;
   onBack: () => void;
   onReset: () => void;
+  validation_issues?: ValidationIssue[];
+  utm_applied?: boolean;
 }
 
-export function EmailPreview({ html, text, onBack, onReset }: EmailPreviewProps) {
+export function EmailPreview({ html, text, onBack, onReset, validation_issues = [], utm_applied = false }: EmailPreviewProps) {
   const [copied, setCopied] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
@@ -73,6 +81,31 @@ export function EmailPreview({ html, text, onBack, onReset }: EmailPreviewProps)
           <Icon name="Download" className="h-4 w-4 text-blue-600" />
           <AlertDescription className="text-blue-800">
             Файл успешно загружен!
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {validation_issues.length > 0 && (
+        <Alert variant={validation_issues.some(i => i.severity === 'error') ? 'destructive' : 'default'}>
+          <Icon name="AlertTriangle" className="h-4 w-4" />
+          <AlertDescription>
+            <div className="font-semibold mb-1">
+              Обнаружено предупреждений: {validation_issues.length}
+            </div>
+            {validation_issues.slice(0, 3).map((issue, i) => (
+              <div key={i} className="text-sm">
+                [{issue.category}] {issue.message}
+              </div>
+            ))}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {utm_applied && (
+        <Alert className="bg-blue-50 border-blue-200">
+          <Icon name="Link" className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-800">
+            UTM-метки успешно добавлены ко всем ссылкам
           </AlertDescription>
         </Alert>
       )}
