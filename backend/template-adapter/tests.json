@@ -1,0 +1,71 @@
+{
+  "tests": [
+    {
+      "name": "Adapt simple HTML template",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "adapt",
+        "html": "<!DOCTYPE html><html><body><div style=\"display:none\">Preview text</div><h1>Main Title</h1><p>Content here</p><a href=\"https://example.com\" style=\"background:#007bff;padding:10px;color:white;\">Click Here</a></body></html>",
+        "options": {
+          "ctaStrategy": "auto",
+          "preheaderFallback": true
+        }
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Render template with data",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "render",
+        "template": "<html><body><h1>{{title}}</h1><a href=\"{{cta_url}}\">{{cta_text}}</a></body></html>",
+        "data": {
+          "title": "Welcome to Our Event",
+          "cta_url": "https://example.com/register",
+          "cta_text": "Register Now"
+        }
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "html": "string",
+        "text": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Validate template",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "validate",
+        "template": "<html><body><h1>{{title}}</h1><div>{{preheader}}</div><a href=\"{{cta_top_url}}\">{{cta_top_text}}</a></body></html>"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Extract placeholders",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "extract",
+        "template": "<html><body><h1>{{title}}</h1><p>{{event.name}}</p><span>{{brand.support}}</span></body></html>"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

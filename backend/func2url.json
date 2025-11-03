@@ -1,14 +1,11 @@
 {
-  "test-generation-methods": "https://functions.poehali.dev/9995ebd2-fdbd-4fb0-a40e-38ffb835ed84",
-  "analyze-template-auto": "https://functions.poehali.dev/2a3fec21-8459-418c-a548-5bd1c9f2ff51",
+  "template-adapter": "https://functions.poehali.dev/9494e2f1-fffb-4efc-9a10-e7763291cd3a",
   "delete-manual-template": "https://functions.poehali.dev/da23dc48-d163-43c7-9f2f-7917bbb166c0",
   "fill-manual-template": "https://functions.poehali.dev/d1b65152-b43b-4be4-8611-8ba8ea54d5c2",
   "get-manual-templates": "https://functions.poehali.dev/b5791965-754f-416c-9998-028b60051e40",
   "save-manual-template": "https://functions.poehali.dev/cb19fd34-0ded-42ab-862c-3665ec9698d7",
   "fill-template-v2": "https://functions.poehali.dev/4d1e870e-39a9-4f8d-a9ca-b17f9811a585",
   "analyze-template-v2": "https://functions.poehali.dev/43abb32b-2387-4899-8e13-85b90879ce0c",
-  "fill-template": "https://functions.poehali.dev/b48a1389-105b-4007-a99d-d8941c0a38bf",
-  "analyze-template": "https://functions.poehali.dev/826203af-dede-46f0-89aa-b28b80ac3b03",
   "generate-email": "https://functions.poehali.dev/d2a2e722-c697-4c1e-a3c7-af2366b408af",
   "execute-request": "https://functions.poehali.dev/480713de-a43a-4793-a6f3-008d55381715",
   "style-validator": "https://functions.poehali.dev/7fe04096-4a45-4b17-a391-c4b02b1b464a",
@@ -22,6 +19,5 @@
   "campaign-manager": "https://functions.poehali.dev/e54890ac-fb38-4f4d-aca0-425c559bce45",
   "unisender-manager": "https://functions.poehali.dev/c6001b4a-b44b-4358-8b02-a4e85f7da1b8",
   "google-docs-reader": "https://functions.poehali.dev/4df54bd9-8e52-46a4-a000-7cf55c0fd37d",
-  "ai-content-generator": "https://functions.poehali.dev/e3a9e3f7-5973-4c72-827a-c755b5b909c0",
   "telegram-notifier": "https://functions.poehali.dev/e3024a9f-3935-4618-8f44-14ef29bf5d0a"
 }
