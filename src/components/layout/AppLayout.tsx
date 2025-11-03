@@ -11,6 +11,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
   const navItems = [
     { path: '/', icon: 'Calendar', label: 'Мероприятия' },
     { path: '/templates', icon: 'FileText', label: 'Шаблоны' },
+    { path: '/template-adapter', icon: 'Wand2', label: 'AI Адаптер' },
     { path: '/campaigns', icon: 'Send', label: 'Кампании' },
     { path: '/history', icon: 'History', label: 'История' },
     { path: '/ai-settings', icon: 'Settings', label: 'AI Настройки' },

@@ -13,6 +13,7 @@ import EventsManager from "./pages/EventsManager";
 import TemplatesManager from "./pages/TemplatesManager";
 import TemplateManualEditor from "./pages/TemplateManualEditor";
 import TemplateTest from "./pages/TemplateTest";
+import TemplateAdapterPage from "./components/template-adapter/TemplateAdapterPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/templates" element={<TemplatesManager />} />
             <Route path="/templates/manual" element={<TemplateManualEditor />} />
             <Route path="/templates-test" element={<TemplateTest />} />
+            <Route path="/template-adapter" element={<TemplateAdapterPage />} />
             <Route path="/dashboard" element={<Index />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
